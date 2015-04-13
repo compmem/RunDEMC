@@ -1,0 +1,94 @@
+#emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
+#ex: set sts=4 ts=4 sw=4 et:
+### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ##
+#
+#   See the COPYING file distributed along with the RunDEMC package for the
+#   copyright and license terms.
+#
+### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ##
+
+
+import sys
+import numpy as np
+
+from demc import Model, HyperPrior, FixedParam
+
+def flatten(lis):
+    """Given a list, possibly nested to any level, return it flattened."""
+    new_lis = []
+    for item in lis:
+        if type(item) == type([]):
+            new_lis.extend(flatten(item))
+        else:
+            new_lis.append(item)
+    return new_lis
+
+class Hierarchy(object):
+    """Collection of Model instances.
+    """
+    def __init__(self, models, num_chains=None):
+        """Make sure to put HyperPriors and FixedParams before the Models
+        that use them.
+        """
+        self._models = flatten(models)
+        self._processed = False
+        self._num_chains = num_chains
+
+    def _process(self):
+        """
+        Process the submodels and set up connections between them.
+        """
+        # make sure all have same number of particles
+        if self._num_chains:
+            max_num_chains = self._num_chains
+        else:
+            max_num_chains = np.max([m._num_chains for m in self._models])
+        sys.stdout.write('Max Group Size: %d\n'%max_num_chains)
+        sys.stdout.flush()        
+        # loop over models, seeing if other models use it as a prior
+        sys.stdout.write('Initializing (%d): '%len(self._models))
+        sys.stdout.flush()        
+        for mi,m in enumerate(self._models):
+            sys.stdout.write('%d '%(mi+1))
+            sys.stdout.flush()        
+            # see if must process, must be initialized all with same
+            # num_chains
+            m._initialize(num_chains=max_num_chains)
+
+            # see if we need to link up with other models
+            if isinstance(m, HyperPrior) or isinstance(m, FixedParam):
+                m_args = []
+                for n in self._models:
+                    if m == n:
+                        # fixed params have params as self
+                        continue
+                    for i,p in enumerate(n._params):
+                        # see if used as HP or FP
+                        if (m == p) or (m == p.prior):
+                            # we have a match, so add the vals
+                            m_args.append({'model':n, 'param_ind':i})
+                # set the args for this model
+                m._like_args = tuple(m_args)
+        sys.stdout.write('\n')        
+        self._processed = True
+
+
+    def __call__(self, num_iter=1, burnin=False,
+                 migration_prob=0.0, reprocess=False):
+        # make sure we've processed
+        if reprocess or not self._processed:
+            self._process()
+
+        sys.stdout.write('Iterations (%d): '%(num_iter))
+        
+        # loop over iterations
+        for i in xrange(num_iter):
+            sys.stdout.write('%d'%(i+1))
+            sys.stdout.flush()
+            # loop over each model doing some Gibbs action
+            for m in self._models:
+                sys.stdout.write('.')
+                sys.stdout.flush()
+                # run for one iteration
+                m(1, burnin=burnin, migration_prob=migration_prob)
+            
