@@ -11,7 +11,7 @@
 RunDEMC - Run Differential Evolution Monte Carlo
 """
 
-from demc import Model, Param, HyperPrior, FixedParam, DE
+from demc import Model, Param, HyperPrior, DE
 from hierarchy import Hierarchy
 import dists
 from dists import logit, invlogit

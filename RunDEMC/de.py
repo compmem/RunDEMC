@@ -73,9 +73,9 @@ class DE(Proposal):
         fixed = np.zeros(proposal.shape[1], dtype=np.bool)
         if params:
             for i,param in enumerate(params):
-                if not hasattr(param.prior,"pdf") or hasattr(param,"_like_fun"):
+                if param._fixed or not hasattr(param.prior,"pdf"):
                     fixed[i] = True
-        non_fixed = np.where(~fixed)[0]
+        #non_fixed = np.where(~fixed)[0]
         
         # get the permuted base_inds
         base_inds = np.random.permutation(len(proposal))

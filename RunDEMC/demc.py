@@ -37,6 +37,10 @@ class Param(object):
 
         self.transform = transform
 
+        # hidden variable to indicate whether this param is fixed at
+        # this level
+        self._fixed = False
+
         
 class Model(object):
     """
@@ -465,6 +469,8 @@ class HyperPrior(Model):
         d_args = [pop[:,i] for i in range(pop.shape[1])]
         d = self._dist(*d_args)
         for m in args:
+            if not hasattr(m['model'],'_particles'):
+                return -np.ones(len(pop))*np.inf
             log_like += np.log(d.pdf(m['model']._particles[-1][:,m['param_ind']]))
             
         # for i,p in enumerate(pop):
@@ -535,31 +541,38 @@ class HyperPrior(Model):
         return r.reshape(size)
 
 
-class FixedParam(Model, Param):
+class FixedParams(Model):
     """Modeled parameter that is fixed across lower-level models
 
     sigma = FixedParam('sigma', prior=np.dists.invgamma(1,1))
     params = [Param('mu', prior=dists.normal(0,1)),
               sigma]
     """
-    def __init__(self, name='', prior=None, init_prior=None,
-                 display_name=None, transform=None,
+    def __init__(self, params,
                  num_chains=None,
                  proposal_gen=None,
                  burnin_proposal_gen=None,
                  use_priors=True,
                  verbose=False):
 
-        # init the Param parent
-        Param.__init__(self, name=name, prior=prior,
-                       init_prior=init_prior, display_name=display_name,
-                       transform=transform)
+        # set each param to be fixed
+        for i in range(len(params)):
+            params[i]._fixed = True
+
+        # save the input params
+        self._submodel_params = params
+
+        # make new params based on these that are not fixed
+        new_params = []
+        for p in params:
+            new_params.append(Param(name=p.name,
+                                    prior=p.prior,
+                                    init_prior=p.init_prior,
+                                    display_name=p.display_name,
+                                    transform=p.transform))
 
         # init the Model parent
-        Model.__init__(self, params=[Param(name=name, prior=prior,
-                                           init_prior=init_prior,
-                                           display_name=display_name,
-                                           transform=transform)],
+        Model.__init__(self, new_params,
                        like_fun=self._fixed_like, 
                        num_chains=num_chains,
                        proposal_gen=proposal_gen,
@@ -569,7 +582,7 @@ class FixedParam(Model, Param):
                        save_posts=False,
                        verbose=verbose)
 
-        # mechanism for saving temporary log likes or the models
+        # mechanism for saving temporary log likes for the models
         # this fixed param is in
         self._mprop_log_likes = {}
         self._mprop_log_prior = {}
@@ -589,9 +602,16 @@ class FixedParam(Model, Param):
         # loop over models, calculating their likes with the proposed value
         # of this fixed param
         for m in args:
+            #from IPython.core.debugger import Tracer ; Tracer()()
+            if not hasattr(m['model'],'_particles'):
+                return -np.ones(len(pop))*np.inf
+
             # get the current population and replace with this proposal
             mpop = m['model']._particles[-1].copy()
-            mpop[:,m['param_ind']] = pop[:,0]
+
+            # set all the fixed params
+            for i,j in m['param_ind']:
+                mpop[:,i] = pop[:,j]
 
             # calc the log-likes from all the models using this param
             mprop_log_likes,mprop_posts = m['model']._calc_log_likes(mpop)
@@ -606,7 +626,7 @@ class FixedParam(Model, Param):
             self._mprop_log_likes[m['model']] = mprop_log_likes
             if m['model']._use_priors:
                 self._mprop_log_prior[m['model']] = mprop_log_prior
-
+                
         return log_like
 
     def _post_evolve(self, pop, kept):
@@ -615,8 +635,8 @@ class FixedParam(Model, Param):
         # loop over the models
         for m in self._like_args:
             # update most recent particles
-            #from IPython.core.debugger import Tracer ; Tracer()()
-            m['model']._particles[-1][kept,m['param_ind']] = pop[kept,0]
+            for i,j in m['param_ind']:            
+                m['model']._particles[-1][kept,i] = pop[kept,j]
             
             # update most recent weights
             m['model']._weights[-1][kept] = self._mprop_log_likes[m['model']][kept]
@@ -627,6 +647,7 @@ class FixedParam(Model, Param):
             # update most recent log_likes
             m['model']._log_likes[-1][kept] = self._mprop_log_likes[m['model']][kept]
 
+        #from IPython.core.debugger import Tracer ; Tracer()()
         pass
 
 
