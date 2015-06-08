@@ -13,6 +13,13 @@ import numpy as np
 
 from demc import Model, HyperPrior, FixedParams
 
+# test for scoop
+try:
+    import scoop
+    from scoop import futures
+except ImportError:
+    scoop = None
+
 def flatten(lis):
     """Given a list, possibly nested to any level, return it flattened."""
     new_lis = []
@@ -31,8 +38,32 @@ class Hierarchy(object):
         that use them.
         """
         self._models = flatten(models)
+        self._other_models = []
         self._processed = False
         self._num_chains = num_chains
+
+    def _proc_params(self, params):
+        # process the params
+        for p in params:
+            # check whether it's fixed
+            if p in self._all_params:
+                # we've seen it before, so it's fixed
+                if not p in self._fixed_params:
+                    # add it to fixed
+                    self._fixed_params.append(p)
+            else:
+                # add it to all
+                self._all_params.append(p)
+
+            # check for HyperPrior
+            if isinstance(p.prior, HyperPrior) and \
+               not p.prior in self._hyper_priors:
+                # append to hyper_priors
+                self._hyper_priors.append(p.prior)
+
+                # process this prior's params
+                self._proc_params(p.prior._params)
+        
 
     def _process(self):
         """
@@ -46,52 +77,43 @@ class Hierarchy(object):
         sys.stdout.write('Max Group Size: %d\n'%max_num_chains)
         sys.stdout.flush()        
         # loop over models, seeing if other models use it as a prior
-        hyper_priors = []
-        fixed_params = []
-        all_params = []
+        self._hyper_priors = []
+        self._fixed_params = []
+        self._all_params = []
         sys.stdout.write('Processing params (%d): '%len(self._models))
         sys.stdout.flush()
         for mi,m in enumerate(self._models):
             sys.stdout.write('%d '%(mi+1))
             sys.stdout.flush()
-
-            # process the params
-            for p in m._params:
-                # check whether it's fixed
-                if p in all_params:
-                    if not p in fixed_params:
-                        # add it to fixed
-                        fixed_params.append(p)
-                else:
-                    # add it to all
-                    all_params.append(p)
-
-                # check for HyperPrior
-                if isinstance(p.prior, HyperPrior) and \
-                   not p.prior in hyper_priors:
-                    hyper_priors.append(p.prior)
+            # proc this model's params (recusively)
+            self._proc_params(m._params)
                     
         sys.stdout.write('\n')
 
         # make fixed_params if necessary
-        if len(fixed_params) > 0:
-            fparams = [FixedParams(fixed_params)]
+        if len(self._fixed_params) > 0:
+            fparams = [FixedParams(self._fixed_params)]
         else:
             fparams = []
 
-        sys.stdout.write('Linking models (%d): '%(len(fparams)+len(hyper_priors)))
+        sys.stdout.write('Linking models (%d): '%(len(fparams)+len(self._hyper_priors)))
         sys.stdout.flush()
 
         # process the HyperPriors
         mi = 0
-        for m in hyper_priors:
+        for m in self._hyper_priors:
             mi += 1
             sys.stdout.write('%d '%(mi))
             sys.stdout.flush()
 
             # loop over the models looking for hpriors
             m_args = []
-            for n in self._models:
+            for n in self._models + self._hyper_priors:
+                # make sure not self
+                if m == n:
+                    # is self, so skip
+                    continue
+                
                 # loop over that model's params
                 for i,p in enumerate(n._params):
                     # see if used as hyper prior
@@ -108,7 +130,7 @@ class Hierarchy(object):
             sys.stdout.write('%d '%(mi))
             sys.stdout.flush()
 
-            # loop over the models looking for hpriors
+            # loop over the models looking for fixed params
             m_args = []
             for n in self._models:
                 # loop over that model's params
@@ -127,12 +149,13 @@ class Hierarchy(object):
         sys.stdout.write('\n')
 
         # prepend the hypers and fixed to model list
-        self._models = hyper_priors + fparams + self._models
+        self._other_models = self._hyper_priors + fparams
             
         # initialize all models
-        sys.stdout.write('Initializing (%d): '%len(self._models))
+        sys.stdout.write('Initializing (%d): '%len(self._models+self._other_models))
         sys.stdout.flush()
-        for mi,m in enumerate(self._models):
+        # make sure to do other_models (fixed and hyper) first
+        for mi,m in enumerate(self._other_models + self._models):
             sys.stdout.write('%d '%(mi+1))
             sys.stdout.flush()        
             # see if must process, must be initialized all with same
@@ -157,7 +180,46 @@ class Hierarchy(object):
         for i in xrange(num_iter):
             sys.stdout.write('%d'%(i+1))
             sys.stdout.flush()
+            
+            # loop over each other model (fixed and hyper) doing some Gibbs action
+            for m in self._other_models:
+                sys.stdout.write('.')
+                sys.stdout.flush()
+                # run for one iteration
+                m(1, burnin=burnin, migration_prob=migration_prob)
+
+            # check if running scoop
+            if scoop and scoop.IS_RUNNING:
+                # prep each submodel in parallel
+                res = []
+                for m in self._models:
+                    # generate the proposals
+                    m._proposal = m._crossover(burnin=burnin)
+
+                    # apply transformation if necessary
+                    pop = m.apply_param_transform(m._proposal)
+
+                    # submit the like_fun call in parallel
+                    args = [pop] + list(m._like_args)
+                    res.append(futures.submit(m._like_fun, *args))
+
+                # collect the results
+                for mi,m in enumerate(self._models):
+                    # wait for the result
+                    #sys.stdout.write('.')
+                    out = res[mi].result()
+                    if isinstance(out, tuple):
+                        # split into likes and posts
+                        log_likes,posts = out
+                    else:
+                        # just likes
+                        log_likes = out
+                        posts = None
+                    m._prop_log_likes = log_likes
+                    m._prop_posts = posts
+                
             # loop over each model doing some Gibbs action
+            # if they have been prepped above this will just do the MH step
             for m in self._models:
                 sys.stdout.write('.')
                 sys.stdout.flush()

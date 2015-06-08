@@ -14,6 +14,13 @@ import sys
 import random
 import time
 
+# test for scoop
+try:
+    import scoop
+    from scoop import futures
+except ImportError:
+    scoop = None
+
 # local imports
 from de import DE
 
@@ -102,7 +109,6 @@ class Model(object):
                  initial_zeros_ok=False,
                  init_multiplier=1,
                  use_priors=True,
-                 save_posts=False,
                  verbose=False):
         """
         DEMC
@@ -110,12 +116,11 @@ class Model(object):
         # set the vars
         self._params = params  # can't be None
         if num_chains is None:
-            num_chains = int(np.min([len(params)*10,50]))
+            num_chains = int(np.min([len(params)*10,100]))
         self._num_chains = num_chains
         self._initial_zeros_ok = initial_zeros_ok
         self._init_multiplier = init_multiplier
         self._use_priors = use_priors
-        self._save_posts = save_posts
         self._verbose = verbose
 
         # set up proposal generator
@@ -142,7 +147,13 @@ class Model(object):
             self._transform_needed = True
         else:
             self._transform_needed = False
-            
+
+        # used for preprocessing
+        self._proposal = None
+        self._prop_log_likes = None
+        self._prop_posts = None
+        self._prev_log_likes = None
+        self._prev_posts = None
 
         # we have not initialized
         self._initialized = False
@@ -195,7 +206,7 @@ class Model(object):
                                         else np.ones((ind.sum(),1))*p.init_prior
                                         for p in self._params])
                 log_likes[ind],temp_posts = self._calc_log_likes(pop[ind])
-                if self._save_posts:
+                if not temp_posts is None:
                     posts[ind] = temp_posts
                 ind = np.isinf(log_likes)|np.isnan(log_likes)
                 good_ind = ~ind
@@ -204,13 +215,13 @@ class Model(object):
             good_ind = ~ind
             pop = pop[good_ind]
             log_likes = log_likes[good_ind]
-            if self._save_posts:
+            if not posts is None:
                 posts = posts[good_ind]
         
         if len(pop) > self._num_chains:
             pop = pop[:self._num_chains]
             log_likes = log_likes[:self._num_chains]
-            if self._save_posts:
+            if not posts is None:
                 posts = posts[:self._num_chains]
                 
         # append the initial log_likes and particles
@@ -223,7 +234,7 @@ class Model(object):
         else:
             self._weights.append(log_likes)
         self._particles.append(pop)
-        if self._save_posts:
+        if not posts is None:
             self._posts.append(posts)
 
         # say we've initialized
@@ -242,10 +253,13 @@ class Model(object):
         pop = self.apply_param_transform(pop)
         
         # first get the log likelihood for the pop
-        if self._save_posts:
-            log_likes,posts = self._like_fun(self, pop, *(self._like_args))
+        out = self._like_fun(pop, *(self._like_args))
+        if isinstance(out, tuple):
+            # split into likes and posts
+            log_likes,posts = out
         else:
-            log_likes = self._like_fun(self, pop, *(self._like_args))
+            # just likes
+            log_likes = out
             posts = None
 
         return log_likes,posts
@@ -312,15 +326,26 @@ class Model(object):
         # first generate new proposals
         # loop over groups, making new proposal pops via mutation
         # or crossover
-        proposal = self._crossover(burnin=burnin)
+        if self._proposal is None:
+            proposal = self._crossover(burnin=burnin)
+        else:
+            proposal = self._proposal
 
         # eval the population (this is separate from the proposals so
         # that we can parallelize the entire operation)
-        prop_log_likes,prop_posts = self._calc_log_likes(proposal)
+        if self._prop_log_likes is None:
+            prop_log_likes,prop_posts = self._calc_log_likes(proposal)
+        else:
+            prop_log_likes = self._prop_log_likes
+            prop_posts = self._prop_posts
 
         # see if recalc prev_likes in case of HyperPrior
         if self._recalc_likes:
-            prev_log_likes,prev_posts = self._calc_log_likes(self._particles[-1])
+            if self._prev_log_likes is None:
+                prev_log_likes,prev_posts = self._calc_log_likes(self._particles[-1])
+            else:
+                prev_log_likes = self._prev_log_likes
+                prev_posts = self._prev_posts
         else:
             prev_log_likes = self._log_likes[-1]
 
@@ -353,18 +378,26 @@ class Model(object):
         weights[~keep] = prev_weights[~keep]
         #if self._use_priors:
         #    weights[~keep] += prev_log_prior[~keep]
-        if self._save_posts:
+        if not prop_posts is None:
             prop_posts[~keep] = self._posts[-1][~keep]
 
         # append the new proposal
         self._particles.append(proposal)
         self._log_likes.append(prop_log_likes)
         self._weights.append(weights)
-        if self._save_posts:
+        if not prop_posts is None:
             self._posts.append(prop_posts)
 
         # call post_evolve hook
         self._post_evolve(proposal, keep)
+
+        # clean up for next
+        self._proposal = None
+        self._prop_log_likes = None
+        self._prop_posts = None
+        self._prev_log_likes = None
+        self._prev_posts = None
+        
         pass
 
     def __call__(self, num_iter, burnin=False, migration_prob=0.0):
@@ -437,7 +470,6 @@ class HyperPrior(Model):
                                          burnin_proposal_gen=burnin_proposal_gen,
                                          initial_zeros_ok=True,
                                          use_priors=use_priors,
-                                         save_posts=False,
                                          verbose=verbose)
 
         # We need to recalc likes of prev iteration in case of hyperprior
@@ -447,7 +479,7 @@ class HyperPrior(Model):
         self._cur_iter = -1
         pass
 
-    def _dist_like(self, demc, pop, *args):
+    def _dist_like(self, pop, *args):
         # the args will contain the list of params in the other models
         # that use this model as a prior
         if len(args) == 0:
@@ -579,7 +611,6 @@ class FixedParams(Model):
                        burnin_proposal_gen=burnin_proposal_gen,
                        initial_zeros_ok=True,
                        use_priors=use_priors,
-                       save_posts=False,
                        verbose=verbose)
 
         # mechanism for saving temporary log likes for the models
@@ -589,7 +620,7 @@ class FixedParams(Model):
 
         pass
 
-    def _fixed_like(self, demc, pop, *args):
+    def _fixed_like(self, pop, *args):
         # the args will contain the list of params in the other models
         # that use this model as a prior
         if len(args) == 0:
@@ -601,6 +632,7 @@ class FixedParams(Model):
 
         # loop over models, calculating their likes with the proposed value
         # of this fixed param
+        res = []
         for m in args:
             #from IPython.core.debugger import Tracer ; Tracer()()
             if not hasattr(m['model'],'_particles'):
@@ -613,19 +645,50 @@ class FixedParams(Model):
             for i,j in m['param_ind']:
                 mpop[:,i] = pop[:,j]
 
-            # calc the log-likes from all the models using this param
-            mprop_log_likes,mprop_posts = m['model']._calc_log_likes(mpop)
+            # calc the log-likes from all the models using these params
+            if scoop and scoop.IS_RUNNING:
+                # submit the like_fun call in parallel
+                margs = [m['model'].apply_param_transform(mpop)] + \
+                         list(m['model']._like_args)
+                res.append(futures.submit(m['model']._like_fun, *margs))
+            else:
+                # calc log likes in serial
+                mprop_log_likes,mprop_posts = m['model']._calc_log_likes(mpop)
+
+                # save these model likes for updating the model with those
+                # that were kept when we call _post_evolve
+                self._mprop_log_likes[m['model']] = mprop_log_likes
+                
+                # aggregate log_likes for each particle
+                log_like += mprop_log_likes
+                
             if m['model']._use_priors:
                 mprop_log_prior = m['model'].calc_log_prior(mpop)
 
-            # aggregate log_likes for each particle
-            log_like += mprop_log_likes
-
-            # save these model likes for updating the model with those
-            # that were kept when we call _post_evolve
-            self._mprop_log_likes[m['model']] = mprop_log_likes
+            # save the prior
             if m['model']._use_priors:
                 self._mprop_log_prior[m['model']] = mprop_log_prior
+
+        if scoop and scoop.IS_RUNNING:
+            # collect the results
+            for mi,m in enumerate(args):
+                # wait for the result
+                #sys.stdout.write('.')
+                out = res[mi].result()
+                if isinstance(out, tuple):
+                    # split into likes and posts
+                    mprop_log_likes,mprop_posts = out
+                else:
+                    # just likes
+                    mprop_log_likes = out
+                    mprop_posts = None
+
+                # add the log_likes
+                log_like += mprop_log_likes
+
+                # save these model likes for updating the model with those
+                # that were kept when we call _post_evolve
+                self._mprop_log_likes[m['model']] = mprop_log_likes
                 
         return log_like
 
