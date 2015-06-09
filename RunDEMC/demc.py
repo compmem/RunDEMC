@@ -29,7 +29,7 @@ class Param(object):
     """
     Parameter for use with RunDEMC.
     """
-    def __init__(self, name='', prior=None, init_prior=None,
+    def __init__(self, name, prior=None, init_prior=None,
                  display_name=None, transform=None):
         self.name = name
         self.prior = prior
@@ -68,7 +68,7 @@ class Model(object):
                                    """)
 
     particles = property(lambda self:
-                         np.asarray(self._particles),
+                         self.apply_param_transform(np.asarray(self._particles)),
                          doc="""
                          Particles as an array.
                          """)
@@ -100,7 +100,7 @@ class Model(object):
     default_prop_gen = DE(gamma_best=0.0,rand_base=False)
     default_burnin_prop_gen = DE(gamma_best=None,rand_base=True)
     
-    def __init__(self, params,
+    def __init__(self, name, params,
                  like_fun, 
                  like_args = None,
                  num_chains=None,
@@ -114,6 +114,7 @@ class Model(object):
         DEMC
         """
         # set the vars
+        self._name = name
         self._params = params  # can't be None
         if num_chains is None:
             num_chains = int(np.min([len(params)*10,100]))
@@ -452,7 +453,7 @@ class Model(object):
 class HyperPrior(Model):
     """Model that acts as a prior for lower-level models
     """
-    def __init__(self, dist, params,
+    def __init__(self, name, dist, params,
                  num_chains=None,
                  proposal_gen=None,
                  burnin_proposal_gen=None,
@@ -463,7 +464,8 @@ class HyperPrior(Model):
         self._dist = dist
 
         # like_args will get filled in later
-        super(HyperPrior, self).__init__(params=params,
+        super(HyperPrior, self).__init__(name=name,
+                                         params=params,
                                          like_fun=self._dist_like, 
                                          num_chains=num_chains,
                                          proposal_gen=proposal_gen,
@@ -580,7 +582,7 @@ class FixedParams(Model):
     params = [Param('mu', prior=dists.normal(0,1)),
               sigma]
     """
-    def __init__(self, params,
+    def __init__(self, name, params,
                  num_chains=None,
                  proposal_gen=None,
                  burnin_proposal_gen=None,
@@ -604,7 +606,7 @@ class FixedParams(Model):
                                     transform=p.transform))
 
         # init the Model parent
-        Model.__init__(self, new_params,
+        Model.__init__(self, name, new_params,
                        like_fun=self._fixed_like, 
                        num_chains=num_chains,
                        proposal_gen=proposal_gen,

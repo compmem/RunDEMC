@@ -12,7 +12,8 @@ import gzip
 import cPickle as pickle
 
 def make_dict(abc, burnin=None, **kwargs):
-    return dict(particles=abc.particles,
+    return dict(name=abc._name,
+                particles=abc.particles,
                 param_names=abc.param_names,
                 param_display_names=abc.param_display_names,
                 weights=abc.weights,
@@ -21,6 +22,11 @@ def make_dict(abc, burnin=None, **kwargs):
                 posts=abc.posts,burnin=burnin,
                 **kwargs)
 
+def gzpickle(obj, filename):
+    gf = gzip.open(filename,'wb')
+    gf.write(pickle.dumps(obj,2))
+    gf.close()
+
 def save_results(filename,abc,burnin=None,**kwargs):
     """
     Save an simulation as a .pickle.gz:
@@ -28,10 +34,8 @@ def save_results(filename,abc,burnin=None,**kwargs):
     save_results('myrun.pickle.gz',burnin=50)
 
     """
-    gf = gzip.open(filename,'wb')
-    gf.write(pickle.dumps(make_dict(abc, burnin=burning, **kwargs),2))
-    gf.close()
-
+    gzpickle(make_dict(abc, burnin=burnin, **kwargs), filename)
+    
 def load_results(filename):
     """
     Load in a simulation that was saved to a pickle.gz.

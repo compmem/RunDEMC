@@ -12,6 +12,7 @@ import sys
 import numpy as np
 
 from demc import Model, HyperPrior, FixedParams
+from io import make_dict, gzpickle
 
 # test for scoop
 try:
@@ -34,13 +35,19 @@ class Hierarchy(object):
     """Collection of Model instances.
     """
     def __init__(self, models, num_chains=None):
-        """Make sure to put HyperPriors and FixedParams before the Models
-        that use them.
+        """Figures out the HyperPriors and FixedParams from list of submodels.
         """
         self._models = flatten(models)
         self._other_models = []
         self._processed = False
         self._num_chains = num_chains
+
+    def save(self, filename, **kwargs):
+        # loop over models adding to a dict of dicts
+        all_mod = {}
+        for m in self._other_models + self._models:
+            all_mod[m._name] = make_dict(m, **kwargs)
+        gzpickle(all_mod, filename)
 
     def _proc_params(self, params):
         # process the params
@@ -92,7 +99,7 @@ class Hierarchy(object):
 
         # make fixed_params if necessary
         if len(self._fixed_params) > 0:
-            fparams = [FixedParams(self._fixed_params)]
+            fparams = [FixedParams('_fixed', self._fixed_params)]
         else:
             fparams = []
 
