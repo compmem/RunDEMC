@@ -39,91 +39,103 @@ def multinomial(xs, ps):
 def normal(mean=0.0, std=1.0):
     return dists.norm(loc=mean, scale=std)
 
-import scipy.stats.distributions
-from scipy.stats._distn_infrastructure import argsreduce
-_norm_cdf = scipy.stats.distributions._continuous_distns._norm_cdf
-_norm_sf = scipy.stats.distributions._continuous_distns._norm_sf
-_norm_isf = scipy.stats.distributions._continuous_distns._norm_isf
-_norm_ppf = scipy.stats.distributions._continuous_distns._norm_ppf
-log = scipy.stats.distributions._continuous_distns.log
-np = scipy.stats.distributions._continuous_distns.np
-my_tn_gen = scipy.stats.distributions._continuous_distns.truncnorm_gen
+try:
+    import scipy.stats.distributions
+    from scipy.stats._distn_infrastructure import argsreduce
+    _norm_cdf = scipy.stats.distributions._continuous_distns._norm_cdf
+    _norm_sf = scipy.stats.distributions._continuous_distns._norm_sf
+    _norm_isf = scipy.stats.distributions._continuous_distns._norm_isf
+    _norm_ppf = scipy.stats.distributions._continuous_distns._norm_ppf
+    log = scipy.stats.distributions._continuous_distns.log
+    np = scipy.stats.distributions._continuous_distns.np
+    my_tn_gen = scipy.stats.distributions._continuous_distns.truncnorm_gen
 
-def _argcheck_fixed(self, a, b):
-    self.a = a
-    self.b = b
-    self._nb = _norm_cdf(b)
-    self._na = _norm_cdf(a)
-    self._sb = _norm_sf(b)
-    self._sa = _norm_sf(a)
-    if np.ndim(self.a)==0:
-        if self.a > 0:
-            self._delta = -(self._sb - self._sa)
+    def _argcheck_fixed(self, a, b):
+        self.a = a
+        self.b = b
+        self._nb = _norm_cdf(b)
+        self._na = _norm_cdf(a)
+        self._sb = _norm_sf(b)
+        self._sa = _norm_sf(a)
+        if np.ndim(self.a)==0:
+            if self.a > 0:
+                self._delta = -(self._sb - self._sa)
+            else:
+                self._delta = self._nb - self._na
         else:
-            self._delta = self._nb - self._na
-    else:
-        self._delta = np.zeros_like(self._sa)
-        self._delta[self.a>0] = -(self._sb[self.a>0] - self._sa[self.a>0])
-        self._delta[self.a<=0] = self._nb[self.a<=0] - self._na[self.a<=0]
-    self._logdelta = log(self._delta)
-    return np.all((a - b)!=0.0)
-def _ppf_fixed(self, q, a, b):
-    if np.ndim(self.a)==0:
-        if self.a > 0:
-            return _norm_isf(q*self._sb + self._sa*(1.0-q))
+            self._delta = np.zeros_like(self._sa)
+            self._delta[self.a>0] = -(self._sb[self.a>0] - self._sa[self.a>0])
+            self._delta[self.a<=0] = self._nb[self.a<=0] - self._na[self.a<=0]
+        self._logdelta = log(self._delta)
+        return np.all((a - b)!=0.0)
+    def _ppf_fixed(self, q, a, b):
+        if np.ndim(self.a)==0:
+            if self.a > 0:
+                return _norm_isf(q*self._sb + self._sa*(1.0-q))
+            else:
+                return _norm_ppf(q*self._nb + self._na*(1.0-q))
         else:
-            return _norm_ppf(q*self._nb + self._na*(1.0-q))
-    else:
-        out = np.zeros_like(self._sa)
-        ind = self.a > 0
-        out[ind] = _norm_isf(q*self._sb[ind] + self._sa[ind]*(1.0-q))
-        out[~ind] = _norm_ppf(q*self._nb[~ind] + self._na[~ind]*(1.0-q))
-        return out
+            out = np.zeros_like(self._sa)
+            ind = self.a > 0
+            out[ind] = _norm_isf(q*self._sb[ind] + self._sa[ind]*(1.0-q))
+            out[~ind] = _norm_ppf(q*self._nb[~ind] + self._na[~ind]*(1.0-q))
+            return out
+
+    def _pdf_fixed(self, x, *args, **kwds):
+        """
+        Probability density function at x of the given RV.
+        Parameters
+        ----------
+        x : array_like
+            quantiles
+        arg1, arg2, arg3,... : array_like
+            The shape parameter(s) for the distribution (see docstring of the
+            instance object for more information)
+        loc : array_like, optional
+            location parameter (default=0)
+        scale : array_like, optional
+            scale parameter (default=1)
+        Returns
+        -------
+        pdf : ndarray
+            Probability density function evaluated at x
+        """
+        args, loc, scale = self._parse_args(*args, **kwds)
+        x, loc, scale = map(np.asarray, (x, loc, scale))
+        args = tuple(map(np.asarray, args))
+        x = np.asarray((x-loc)*1.0/scale)
+        cond0 = self._argcheck(*args) & (scale > 0)
+        cond1 = (scale > 0) & (x >= self.a) & (x <= self.b)
+        cond = cond0 & cond1
+        output = np.zeros(np.shape(cond), 'd')
+        np.putmask(output, (1-cond0)+np.isnan(x), self.badvalue)
+        if any(cond.flatten()):
+            goodargs = argsreduce(cond|~cond, *((x,)+args+(scale,)))
+            scale, goodargs = goodargs[-1], goodargs[:-1]
+            ccond = cond.copy()
+            ccond.shape = goodargs[0].shape
+            output[cond] = (self._pdf(*goodargs)/scale)[ccond]
+            #place(output, cond, self._pdf(*goodargs) / scale)
+        if output.ndim == 0:
+            return output[()]
+        return output
     
-def _pdf_fixed(self, x, *args, **kwds):
-    """
-    Probability density function at x of the given RV.
-    Parameters
-    ----------
-    x : array_like
-        quantiles
-    arg1, arg2, arg3,... : array_like
-        The shape parameter(s) for the distribution (see docstring of the
-        instance object for more information)
-    loc : array_like, optional
-        location parameter (default=0)
-    scale : array_like, optional
-        scale parameter (default=1)
-    Returns
-    -------
-    pdf : ndarray
-        Probability density function evaluated at x
-    """
-    args, loc, scale = self._parse_args(*args, **kwds)
-    x, loc, scale = map(np.asarray, (x, loc, scale))
-    args = tuple(map(np.asarray, args))
-    x = np.asarray((x-loc)*1.0/scale)
-    cond0 = self._argcheck(*args) & (scale > 0)
-    cond1 = (scale > 0) & (x >= self.a) & (x <= self.b)
-    cond = cond0 & cond1
-    output = np.zeros(np.shape(cond), 'd')
-    np.putmask(output, (1-cond0)+np.isnan(x), self.badvalue)
-    if any(cond.flatten()):
-        goodargs = argsreduce(cond|~cond, *((x,)+args+(scale,)))
-        scale, goodargs = goodargs[-1], goodargs[:-1]
-        ccond = cond.copy()
-        ccond.shape = goodargs[0].shape
-        output[cond] = (self._pdf(*goodargs)/scale)[ccond]
-        #place(output, cond, self._pdf(*goodargs) / scale)
-    if output.ndim == 0:
-        return output[()]
-    return output
-
-my_tn_gen._argcheck = _argcheck_fixed
-my_tn_gen._ppf = _ppf_fixed
-my_tn_gen.pdf = _pdf_fixed
-my_tn = my_tn_gen(name='truncnorm')
-
+    my_tn_gen._argcheck = _argcheck_fixed
+    my_tn_gen._ppf = _ppf_fixed
+    my_tn_gen.pdf = _pdf_fixed
+    my_tn = my_tn_gen(name='truncnorm')
+    
+except:
+    print "WARNING: Your version of scipy is old and our truncnorm fix \n" +\
+        "will not work. Reverting to original (slower) code."
+    my_tn = dists.truncnorm
+    # class TruncNorm():
+    #     def __init__(self, mean=0.0, std=1.0, lower=0.0, upper=1.0):
+    #         self._a = (np.array(lower) - np.array(mean)) / np.array(std)
+    #         self._b = (np.array(upper) - np.array(mean)) / np.array(std)
+    #         self._mean = mean
+    #         self._std = std
+    
 def trunc_normal(mean=0.0, std=1.0, lower=0.0, upper=1.0):
     a = (np.array(lower) - np.array(mean)) / np.array(std)
     b = (np.array(upper) - np.array(mean)) / np.array(std)
