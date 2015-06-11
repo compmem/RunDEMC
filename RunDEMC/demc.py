@@ -498,39 +498,34 @@ class HyperPrior(Model):
         #     self._cur_ind = [[np.random.randint(0,m['model']._num_chains)
         #                       for m in args]
         #                      for p in pop]
+            
+        # loop over population (eventually parallelize this)
+        d_args = [pop[:,i] for i in range(pop.shape[1])]
+        d = self._dist(*d_args)
+        for m in args:
+            if not hasattr(m['model'],'_particles'):
+                return -np.ones(len(pop))*np.inf
+            log_like += np.log(d.pdf(m['model']._particles[-1][:,m['param_ind']]))
+            
+        # for i,p in enumerate(pop):
+        #     # set up the distribution
+        #     d = self._dist(*p)
 
-        # handle the truncnorm issue
-        try:
-            # loop over population
-            d_args = [pop[:,i] for i in range(pop.shape[1])]
-            d = self._dist(*d_args)
-            for m in args:
-                if not hasattr(m['model'],'_particles'):
-                    return -np.ones(len(pop))*np.inf
-                log_like += np.log(d.pdf(m['model']._particles[-1][:,m['param_ind']]))
-        except:
-            # try it looping over each pop
-            for i,p in enumerate(pop):
-                # set up the distribution
-                d = self._dist(*p)
+        #     # loop over all the mod/param using this as prior
+        #     vals = []
+        #     #c = None
+        #     for j,m in enumerate(args):
+        #         # grab the most recent vals from
+        #         # that DEMC model and param index
+        #         # pick a chain at random (keep same for each model)
+        #         #if c is None:
+        #         #c = np.random.randint(0,m['model']._num_chains)
+        #         # extract that val
+        #         #c = self._cur_ind[i][j]
+        #         vals.append(m['model']._particles[-1][i,m['param_ind']])
 
-                # loop over all the mod/param using this as prior
-                vals = []
-                #c = None
-                for j,m in enumerate(args):
-                    # grab the most recent vals from
-                    # that DEMC model and param index
-                    # pick a chain at random (keep same for each model)
-                    #if c is None:
-                    #c = np.random.randint(0,m['model']._num_chains)
-                    # extract that val
-                    #c = self._cur_ind[i][j]
-                    if not hasattr(m['model'],'_particles'):
-                        return -np.ones(len(pop))*np.inf                    
-                    vals.append(m['model']._particles[-1][i,m['param_ind']])
-
-                # add the sum log like for that pop
-                log_like[i] += np.log(d.pdf(vals)).sum()
+        #     # add the sum log like for that pop
+        #     log_like[i] += np.log(d.pdf(vals)).sum()
 
         return log_like
 
@@ -546,20 +541,18 @@ class HyperPrior(Model):
             chains = np.random.randint(0,self._num_chains,len(vals))
 
         # generate the pdf using the likelihood func
-        try:
-            pop = self._particles[-1][chains]
-            args = [pop[:,i] for i in range(pop.shape[1])]
-            d = self._dist(*args)
-            #p = np.hstack([d.pdf(vals[:,i]) for i in range(vals.shape[1])])
-            if np.ndim(vals) > 1:
-                p = np.vstack([d.pdf(vals[:,i]) for i in range(vals.shape[1])]).T
-            else:
-                p = d.pdf(vals)
-        except:
-            #p = d.pdf(vals.T).T
-            #p = self._dist(*self._particles[-1][chains]).pdf(vals)        
-            p = np.array([self._dist(*self._particles[-1][ind]).pdf(vals[i])
-                          for i,ind in enumerate(chains)])
+        pop = self._particles[-1][chains]
+        args = [pop[:,i] for i in range(pop.shape[1])]
+        d = self._dist(*args)
+        #p = np.hstack([d.pdf(vals[:,i]) for i in range(vals.shape[1])])
+        if np.ndim(vals) > 1:
+            p = np.vstack([d.pdf(vals[:,i]) for i in range(vals.shape[1])]).T
+        else:
+            p = d.pdf(vals)
+        #p = d.pdf(vals.T).T
+        #p = self._dist(*self._particles[-1][chains]).pdf(vals)        
+        #p = np.array([self._dist(*self._particles[-1][ind]).pdf(vals[i])
+        #              for i,ind in enumerate(chains)])
         return p
 
     def rvs(self, size):
