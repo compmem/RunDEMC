@@ -182,3 +182,60 @@ class CustomDist(object):
     def __init__(self, pdf=None, rvs=None):
         self.pdf = pdf
         self.rvs = rvs
+
+
+def uniform_weights(n,nd):
+    rv = np.random.rand(n,nd-1)
+    rv.sort(axis=1)
+    uv = np.hstack([np.zeros((n,1)),
+                    rv,
+                    np.ones((n,1))])
+    return np.diff(uv, axis=1)
+
+
+class Mixture(object):
+    """Class to handle a mixture of distributions.
+    """
+    def __init__(self, dist_list):
+        self._dist_list = dist_list
+        self._weights = None
+
+    def __call__(self, *weights):
+        weights = np.atleast_2d(weights) #[w for w in weights]
+        #weights = np.array([np.atleast_1d(w) for w in weights])
+        if len(weights) == (len(self._dist_list)-1):
+            weights = weights.T
+        wnew = np.atleast_2d(1-np.sum(weights,axis=1)).T
+        weights = np.hstack([weights,wnew])
+        self._weights = weights
+        return self
+
+    def pdf(self, *args, **kwargs):
+        # calc weighted combo of pdfs
+        pdfs = np.array([d.pdf(*args, **kwargs)
+                         for d in self._dist_list]).T
+
+        # handle the weights
+        if self._weights is None:
+            pdfs = pdfs.sum(0)*0.0
+        else:
+            pdfs = (pdfs*self._weights).T.sum(0)
+        
+            # set any pdf with bad weights to zero
+            bad_ind = ((self._weights>1.0)|(self._weights<0.0)).sum(1) > 0
+            pdfs[bad_ind] = 0.0
+        
+        return pdfs
+
+    def rvs(self, size):
+        # calc the rvs
+        rv = np.array([d.rvs(size)
+                       for d in self._dist_list])
+
+        # handle the weights
+        inds = np.array([np.random.choice(range(len(self._dist_list)),
+                                          size=rv.shape[2:],
+                                          p=self._weights[i])
+                         for i in range(len(self._weights))])
+
+        return rv[inds,np.arange(len(inds))]

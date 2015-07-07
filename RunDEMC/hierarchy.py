@@ -49,27 +49,32 @@ class Hierarchy(object):
             all_mod[m._name] = make_dict(m, **kwargs)
         gzpickle(all_mod, filename)
 
-    def _proc_params(self, params):
+    def _proc_params(self, params, level=0):
+        # make sure to set level
+        if not len(self._fixed_params) == (level+1):
+            self._fixed_params.append([])
+            self._hyper_priors.append([])
+            
         # process the params
         for p in params:
             # check whether it's fixed
             if p in self._all_params:
                 # we've seen it before, so it's fixed
-                if not p in self._fixed_params:
+                if not p in self._fixed_params[level]:
                     # add it to fixed
-                    self._fixed_params.append(p)
+                    self._fixed_params[level].append(p)
             else:
                 # add it to all
                 self._all_params.append(p)
 
             # check for HyperPrior
             if isinstance(p.prior, HyperPrior) and \
-               not p.prior in self._hyper_priors:
+               not p.prior in self._hyper_priors[level]:
                 # append to hyper_priors
-                self._hyper_priors.append(p.prior)
+                self._hyper_priors[level].append(p.prior)
 
                 # process this prior's params
-                self._proc_params(p.prior._params)
+                self._proc_params(p.prior._params, level=level+1)
         
 
     def _process(self):
@@ -93,29 +98,35 @@ class Hierarchy(object):
             sys.stdout.write('%d '%(mi+1))
             sys.stdout.flush()
             # proc this model's params (recusively)
-            self._proc_params(m._params)
+            self._proc_params(m._params, level=0)
                     
         sys.stdout.write('\n')
 
         # make fixed_params if necessary
-        if len(self._fixed_params) > 0:
-            fparams = [FixedParams('_fixed', self._fixed_params)]
-        else:
-            fparams = []
+        fparams = []
+        for level in range(len(self._fixed_params)):
+            if len(self._fixed_params[level]) > 0:
+                fparams.append(FixedParams('_fixed_%d'%level,
+                                           self._fixed_params[level]))
+            else:
+                fparams.append([])
 
-        sys.stdout.write('Linking models (%d): '%(len(fparams)+len(self._hyper_priors)))
+        # flatten the hps
+        flattened_hps = flatten(self._hyper_priors)
+        sys.stdout.write('Linking models (%d): '%(len(flatten(fparams))+
+                                                  len(flattened_hps)))
         sys.stdout.flush()
 
         # process the HyperPriors
         mi = 0
-        for m in self._hyper_priors:
+        for m in flattened_hps:
             mi += 1
             sys.stdout.write('%d '%(mi))
             sys.stdout.flush()
 
             # loop over the models looking for hpriors
             m_args = []
-            for n in self._models + self._hyper_priors:
+            for n in self._models + flattened_hps:
                 # make sure not self
                 if m == n:
                     # is self, so skip
@@ -133,13 +144,15 @@ class Hierarchy(object):
             
         # loop over fixed params
         for m in fparams:
+            if m == []:
+                continue
             mi += 1
             sys.stdout.write('%d '%(mi))
             sys.stdout.flush()
 
             # loop over the models looking for fixed params
             m_args = []
-            for n in self._models:
+            for n in self._models + flattened_hps:
                 # loop over that model's params
                 p_inds = []
                 for i,p in enumerate(n._params):
@@ -156,7 +169,16 @@ class Hierarchy(object):
         sys.stdout.write('\n')
 
         # prepend the hypers and fixed to model list
-        self._other_models = self._hyper_priors + fparams
+        self._other_models = []
+        for level in range(len(self._hyper_priors)):
+            to_add = []
+            if not self._hyper_priors[level] == []:
+                to_add.extend(self._hyper_priors[level])
+            if not fparams[level] == []:
+                to_add.append(fparams[level])
+            self._other_models.extend(to_add)
+        # reverse the order so the higher-level priors and params init first
+        self._other_models.reverse()
             
         # initialize all models
         sys.stdout.write('Initializing (%d): '%len(self._models+self._other_models))

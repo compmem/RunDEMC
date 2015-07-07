@@ -648,7 +648,9 @@ class FixedParams(Model):
                 mpop[:,i] = pop[:,j]
 
             # calc the log-likes from all the models using these params
-            if scoop and scoop.IS_RUNNING:
+            if not isinstance(m['model'], HyperPrior) and \
+               not isinstance(m['model'], FixedParams) and \
+               scoop and scoop.IS_RUNNING:
                 # submit the like_fun call in parallel
                 margs = [m['model'].apply_param_transform(mpop)] + \
                          list(m['model']._like_args)
@@ -671,7 +673,7 @@ class FixedParams(Model):
             if m['model']._use_priors:
                 self._mprop_log_prior[m['model']] = mprop_log_prior
 
-        if scoop and scoop.IS_RUNNING:
+        if len(res) > 0: #scoop and scoop.IS_RUNNING:
             # collect the results
             for mi,m in enumerate(args):
                 # wait for the result

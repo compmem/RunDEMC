@@ -61,6 +61,9 @@ class DE(Proposal):
         else:
             tweights = np.exp(np.float64(weights)) + .0000001
 
+        # zero out nan vals
+        tweights[np.isnan(tweights)] = 0.0
+
         # get cumsum so we can sample probabilistically
         w_sum = tweights.sum()
         p_w = tweights/w_sum
