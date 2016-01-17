@@ -37,7 +37,7 @@ class Param(object):
         if init_prior is None:
             init_prior = self.prior
         self.init_prior = init_prior
-            
+
         if display_name is None:
             display_name = self.name
         self.display_name = display_name
@@ -48,7 +48,7 @@ class Param(object):
         # this level
         self._fixed = False
 
-        
+
 class Model(object):
     """
     Differential Evolution Monte Carlo
@@ -109,7 +109,8 @@ class Model(object):
                  initial_zeros_ok=False,
                  init_multiplier=1,
                  use_priors=True,
-                 verbose=False):
+                 verbose=False,
+                 partition=None):
         """
         DEMC
         """
@@ -123,6 +124,11 @@ class Model(object):
         self._init_multiplier = init_multiplier
         self._use_priors = use_priors
         self._verbose = verbose
+        if partition is None:
+            partition = len(self._params)
+        if partition > len(self._params):
+            partition = len(self._params)
+        self._partition = partition
 
         # set up proposal generator
         if proposal_gen is None:
@@ -159,7 +165,7 @@ class Model(object):
         # we have not initialized
         self._initialized = False
         
-    def _initialize(self, force=False, num_chains=None):
+    def _initialize(self, force=False, num_chains=None, partition=None):
         if self._initialized and not force:
             # already done
             return
@@ -180,6 +186,17 @@ class Model(object):
         self._weights = []
         self._times = []
         self._posts = []
+
+        # set the partition
+        # see if we're modifying it
+        if not partition is None:
+            if partition > len(self._params):
+                partition = len(self._params)
+            self._partition = partition
+
+        self._parts = np.array([1]*self._partition +
+                               [0]*(len(self._params)-self._partition),
+                               dtype=np.bool)
 
         # fill using init priors (for initialization)
         init_parts = self._num_chains*self._init_multiplier
@@ -265,6 +282,16 @@ class Model(object):
 
         return log_likes,posts
 
+    def _get_part_ind(self):
+        # grab the current partition indices
+        parts = self._parts.copy()
+
+        # roll them the size of the partition
+        self._parts = np.roll(self._parts, self._partition)
+
+        # return the pre-rolled value
+        return parts
+    
     def _crossover(self, burnin=False):
         if burnin:
             prop_gen = self._burnin_prop_gen
@@ -275,6 +302,11 @@ class Model(object):
         proposal = prop_gen(self._particles[-1],
                             self._weights[-1],
                             self._params)
+
+        # apply the partition by copying prev values back
+        parts = self._get_part_ind()
+        proposal[:,~parts] = self._particles[-1][:,~parts]
+        
         return proposal
 
     def _migrate(self):
@@ -615,6 +647,9 @@ class FixedParams(Model):
                        use_priors=use_priors,
                        verbose=verbose)
 
+        # We need to recalc likes of prev iteration in case of FixedParams
+        self._recalc_likes = True
+
         # mechanism for saving temporary log likes for the models
         # this fixed param is in
         self._mprop_log_likes = {}
@@ -624,7 +659,7 @@ class FixedParams(Model):
 
     def _fixed_like(self, pop, *args):
         # the args will contain the list of params in the other models
-        # that use this model as a prior
+        # that use this param
         if len(args) == 0:
             # we are not likely
             return -np.ones(len(pop))*np.inf
@@ -637,6 +672,7 @@ class FixedParams(Model):
         res = []
         for m in args:
             #from IPython.core.debugger import Tracer ; Tracer()()
+            # make sure the submodel has initialized
             if not hasattr(m['model'],'_particles'):
                 return -np.ones(len(pop))*np.inf
 
@@ -647,31 +683,36 @@ class FixedParams(Model):
             for i,j in m['param_ind']:
                 mpop[:,i] = pop[:,j]
 
-            # calc the log-likes from all the models using these params
-            if not isinstance(m['model'], HyperPrior) and \
-               not isinstance(m['model'], FixedParams) and \
-               scoop and scoop.IS_RUNNING:
-                # submit the like_fun call in parallel
-                margs = [m['model'].apply_param_transform(mpop)] + \
-                         list(m['model']._like_args)
-                res.append(futures.submit(m['model']._like_fun, *margs))
+            # see if we're just updated log_like for updated children
+            if ((mpop - m['model']._particles[-1])!=0.0).sum() == 0:
+                # it's the same params, so just pull the likes
+                log_like += m['model']._log_likes[-1]
             else:
-                # calc log likes in serial
-                mprop_log_likes,mprop_posts = m['model']._calc_log_likes(mpop)
+                # calc the log-likes from all the models using these params
+                if not isinstance(m['model'], HyperPrior) and \
+                   not isinstance(m['model'], FixedParams) and \
+                   scoop and scoop.IS_RUNNING:
+                    # submit the like_fun call in parallel
+                    margs = [m['model'].apply_param_transform(mpop)] + \
+                             list(m['model']._like_args)
+                    res.append(futures.submit(m['model']._like_fun, *margs))
+                else:
+                    # calc log likes in serial
+                    mprop_log_likes,mprop_posts = m['model']._calc_log_likes(mpop)
 
-                # save these model likes for updating the model with those
-                # that were kept when we call _post_evolve
-                self._mprop_log_likes[m['model']] = mprop_log_likes
-                
-                # aggregate log_likes for each particle
-                log_like += mprop_log_likes
-                
-            if m['model']._use_priors:
-                mprop_log_prior = m['model'].calc_log_prior(mpop)
+                    # save these model likes for updating the model with those
+                    # that were kept when we call _post_evolve
+                    self._mprop_log_likes[m['model']] = mprop_log_likes
 
-            # save the prior
-            if m['model']._use_priors:
-                self._mprop_log_prior[m['model']] = mprop_log_prior
+                    # aggregate log_likes for each particle
+                    log_like += mprop_log_likes
+
+                if m['model']._use_priors:
+                    mprop_log_prior = m['model'].calc_log_prior(mpop)
+
+                # save the prior
+                if m['model']._use_priors:
+                    self._mprop_log_prior[m['model']] = mprop_log_prior
 
         if len(res) > 0: #scoop and scoop.IS_RUNNING:
             # collect the results

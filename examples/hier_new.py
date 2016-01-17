@@ -22,30 +22,33 @@ and calling each param's pdf to get the log_like for that param.
 
 """
 
-from RunDEMC import DEMC, Hierarchy, Param, dists
+from RunDEMC import Model, HyperPrior, Hierarchy, Param, dists
 
 
 # set up the hyper priors
-h_alpha = DEMC(dist=dists.normal,
-               params=[Param(name='mu', prior=dists.normal(1,.5)),
-                       Param(name='sigma', prior=dists.invgamma(4,10))],
-               )
-h_beta = DEMC(dist=dists.normal,
-              params=[Param(name='mu', prior=dists.normal(1,.5)),
-                      Param(name='sigma', prior=dists.invgamma(4,10))],
-              )
+h_alpha = HyperPrior(name='h_alpha',
+                     dist=dists.normal,
+                     params=[Param(name='mu', prior=dists.normal(1,.5)),
+                             Param(name='sigma', prior=dists.invgamma(4,10))])
+
+h_beta = HyperPrior(name='h_beta',
+                    dist=dists.normal,
+                    params=[Param(name='mu', prior=dists.normal(1,.5)),
+                            Param(name='sigma', prior=dists.invgamma(4,10))])
 
 # set up lower level (i.e., subject)
-params = [Param(name='alpha', prior=h_alpha),
-          Param(name='beta', prior=h_beta)]
-
-def subj_like(de, pop, *args):
+def subj_like(pop, *args):
     return np.log(dists.beta(pop[:,0],pop[:,1]).pdf(args[0]))
 
-submods = [DEMC(like_fun=subj_like,
-                params=params) for s in subjs]
+submods = [Model(name='subj_%s'%s,
+                 params=[Param(name='alpha', prior=h_alpha),
+                         Param(name='beta', prior=h_beta)],
+                 like_fun=subj_like,
+                 like_args=(sdat[s],),
+                 verbose=False)
+           for s in subjs]
 
-hier = Hiearachy([[h_alpha,h_beta],submods])
+hier = Hiearachy(submods)
 
 hier(50, burnin=True)
 hier(500)

@@ -156,6 +156,9 @@ def poisson(lam=1.0):
 def laplace(loc=0.0, diversity=1.0):
     return dists.laplace(loc=loc, scale=diversity)
 
+def students_t(mean=0, std=1.0, df=1.0):
+    return dists.t(df=df, loc=mean, scale=std)
+
 def epa_kernel(x,delta):
     """
     Epanechnikov kernel.

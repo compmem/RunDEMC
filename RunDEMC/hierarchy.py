@@ -34,13 +34,14 @@ def flatten(lis):
 class Hierarchy(object):
     """Collection of Model instances.
     """
-    def __init__(self, models, num_chains=None):
+    def __init__(self, models, num_chains=None, partition=None):
         """Figures out the HyperPriors and FixedParams from list of submodels.
         """
         self._models = flatten(models)
         self._other_models = []
         self._processed = False
         self._num_chains = num_chains
+        self._partition = partition
 
     def save(self, filename, **kwargs):
         # loop over models adding to a dict of dicts
@@ -189,7 +190,7 @@ class Hierarchy(object):
             sys.stdout.flush()        
             # see if must process, must be initialized all with same
             # num_chains
-            m._initialize(num_chains=max_num_chains)
+            m._initialize(num_chains=max_num_chains, partition=self._partition)
         sys.stdout.write('\n')
 
         # we're done processing
