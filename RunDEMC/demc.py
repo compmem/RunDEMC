@@ -21,6 +21,13 @@ try:
 except ImportError:
     scoop = None
 
+# test for joblib
+try:
+    import joblib
+    from joblib import Parallel, delayed
+except ImportError:
+    joblib = None
+
 # local imports
 from de import DE
 
@@ -110,7 +117,8 @@ class Model(object):
                  init_multiplier=1,
                  use_priors=True,
                  verbose=False,
-                 partition=None):
+                 partition=None,
+                 parallel=None):
         """
         DEMC
         """
@@ -129,6 +137,7 @@ class Model(object):
         if partition > len(self._params):
             partition = len(self._params)
         self._partition = partition
+        self._parallel = parallel
 
         # set up proposal generator
         if proposal_gen is None:
@@ -619,7 +628,8 @@ class FixedParams(Model):
                  proposal_gen=None,
                  burnin_proposal_gen=None,
                  use_priors=True,
-                 verbose=False):
+                 verbose=False,
+                 parallel=None):
 
         # set each param to be fixed
         for i in range(len(params)):
@@ -645,7 +655,8 @@ class FixedParams(Model):
                        burnin_proposal_gen=burnin_proposal_gen,
                        initial_zeros_ok=True,
                        use_priors=use_priors,
-                       verbose=verbose)
+                       verbose=verbose,
+                       parallel=parallel)
 
         # We need to recalc likes of prev iteration in case of FixedParams
         self._recalc_likes = True
@@ -670,32 +681,44 @@ class FixedParams(Model):
         # loop over models, calculating their likes with the proposed value
         # of this fixed param
         res = []
+        jobs = []
+        mods = []
         for m in args:
             #from IPython.core.debugger import Tracer ; Tracer()()
             # make sure the submodel has initialized
-            if not hasattr(m['model'],'_particles'):
+            if not hasattr(m['model'], '_particles'):
                 return -np.ones(len(pop))*np.inf
 
             # get the current population and replace with this proposal
             mpop = m['model']._particles[-1].copy()
 
             # set all the fixed params
-            for i,j in m['param_ind']:
-                mpop[:,i] = pop[:,j]
+            for i, j in m['param_ind']:
+                mpop[:, i] = pop[:, j]
 
             # see if we're just updated log_like for updated children
-            if ((mpop - m['model']._particles[-1])!=0.0).sum() == 0:
+            if np.all((mpop - m['model']._particles[-1]) == 0.0):
                 # it's the same params, so just pull the likes
-                log_like += m['model']._log_likes[-1]
+                mprop_log_likes = m['model']._log_likes[-1]
+                log_like += mprop_log_likes
+                self._mprop_log_likes[m['model']] = mprop_log_likes
             else:
                 # calc the log-likes from all the models using these params
                 if not isinstance(m['model'], HyperPrior) and \
                    not isinstance(m['model'], FixedParams) and \
-                   scoop and scoop.IS_RUNNING:
-                    # submit the like_fun call in parallel
-                    margs = [m['model'].apply_param_transform(mpop)] + \
-                             list(m['model']._like_args)
-                    res.append(futures.submit(m['model']._like_fun, *margs))
+                   ((scoop and scoop.IS_RUNNING) or self._parallel):
+                    if (scoop and scoop.IS_RUNNING):
+                        # submit the like_fun call to scoop
+                        margs = [m['model'].apply_param_transform(mpop)] + \
+                                 list(m['model']._like_args)
+                        res.append(futures.submit(m['model']._like_fun, *margs))
+                    else:
+                        # submit to joblib
+                        jobs.append(delayed(m['model']._like_fun)(m['model'].apply_param_transform(mpop),
+                                                                  *m['model']._like_args))
+
+                    # append to list of mods we're processing
+                    mods.append(m)
                 else:
                     # calc log likes in serial
                     mprop_log_likes,mprop_posts = m['model']._calc_log_likes(mpop)
@@ -714,12 +737,21 @@ class FixedParams(Model):
                 if m['model']._use_priors:
                     self._mprop_log_prior[m['model']] = mprop_log_prior
 
-        if len(res) > 0: #scoop and scoop.IS_RUNNING:
+        if len(jobs) > 0 and \
+           not (scoop and scoop.IS_RUNNING) and self._parallel:
+            # submit the joblib jobs
+            res = self._parallel(jobs)
+
+        if len(res) > 0:
             # collect the results
-            for mi,m in enumerate(args):
+            for mi, m in enumerate(mods):
                 # wait for the result
-                #sys.stdout.write('.')
-                out = res[mi].result()
+                if (scoop and scoop.IS_RUNNING):
+                    out = res[mi].result()
+                else:
+                    # pull results from joblib
+                    out = res[mi]
+
                 if isinstance(out, tuple):
                     # split into likes and posts
                     mprop_log_likes,mprop_posts = out
