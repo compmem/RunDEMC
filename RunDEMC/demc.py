@@ -319,8 +319,8 @@ class Model(object):
         return proposal
 
     def _migrate(self):
-        # pick which items will migrate        
-        num_to_migrate = np.random.random_integers(2,self._num_chains)
+        # pick which items will migrate
+        num_to_migrate = np.random.random_integers(2, self._num_chains)
         to_migrate = random.sample(range(self._num_chains), num_to_migrate)
 
         # do a circle swap
@@ -347,12 +347,12 @@ class Model(object):
             mh_prob = np.exp(log_diff)
             if np.isnan(mh_prob):
                 mh_prob = 0.0
-            keep = (mh_prob-np.random.rand())>0.0
+            keep = (mh_prob-np.random.rand()) > 0.0
             if keep:
-                keepers.append({'ind':j,
-                                'particle':self._particles[-1][i],
-                                'weight':self._weights[-1][i],
-                                'log_like':self._log_likes[-1][i]})
+                keepers.append({'ind': j,
+                                'particle': self._particles[-1][i],
+                                'weight': self._weights[-1][i],
+                                'log_like': self._log_likes[-1][i]})
 
         for k in keepers:
             # do the swap (i.e., replace j with i)
@@ -376,7 +376,7 @@ class Model(object):
         # eval the population (this is separate from the proposals so
         # that we can parallelize the entire operation)
         if self._prop_log_likes is None:
-            prop_log_likes,prop_posts = self._calc_log_likes(proposal)
+            prop_log_likes, prop_posts = self._calc_log_likes(proposal)
         else:
             prop_log_likes = self._prop_log_likes
             prop_posts = self._prop_posts
@@ -384,7 +384,7 @@ class Model(object):
         # see if recalc prev_likes in case of HyperPrior
         if self._recalc_likes:
             if self._prev_log_likes is None:
-                prev_log_likes,prev_posts = self._calc_log_likes(self._particles[-1])
+                prev_log_likes, prev_posts = self._calc_log_likes(self._particles[-1])
             else:
                 prev_log_likes = self._prev_log_likes
                 prev_posts = self._prev_posts
@@ -397,8 +397,8 @@ class Model(object):
 
         # next see if we need to include priors for each param
         if self._use_priors:
-            prop_log_prior,prev_log_prior = self.calc_log_prior(proposal,
-                                                                self._particles[-1])
+            prop_log_prior, prev_log_prior = self.calc_log_prior(proposal,
+                                                                 self._particles[-1])
             weights = prop_log_likes + prop_log_prior
             log_diff += np.float64(prop_log_prior - prev_log_prior)
 
@@ -406,13 +406,13 @@ class Model(object):
         else:
             weights = prop_log_likes
             prev_weights = prev_log_likes
-        
+
         # handle much greater than one
         log_diff[log_diff > 0.0] = 0.0
         # now exp so we can get the other probs
         mh_prob = np.exp(log_diff)
         mh_prob[np.isnan(mh_prob)] = 0.0
-        keep = (mh_prob-np.random.rand(len(mh_prob)))>0.0
+        keep = (mh_prob-np.random.rand(len(mh_prob))) > 0.0
 
         # set the not keepers from previous population
         proposal[~keep] = self._particles[-1][~keep]
@@ -420,14 +420,14 @@ class Model(object):
         weights[~keep] = prev_weights[~keep]
         #if self._use_priors:
         #    weights[~keep] += prev_log_prior[~keep]
-        if not prop_posts is None:
+        if prop_posts is not None:
             prop_posts[~keep] = self._posts[-1][~keep]
 
         # append the new proposal
         self._particles.append(proposal)
         self._log_likes.append(prop_log_likes)
         self._weights.append(weights)
-        if not prop_posts is None:
+        if prop_posts is not None:
             self._posts.append(prop_posts)
 
         # call post_evolve hook
@@ -439,16 +439,16 @@ class Model(object):
         self._prop_posts = None
         self._prev_log_likes = None
         self._prev_posts = None
-        
+
         pass
 
     def __call__(self, num_iter, burnin=False, migration_prob=0.0):
         # make sure we've initialized
         self._initialize()
-        
+
         # loop over iterations
         if self._verbose:
-            sys.stdout.write('Iterations (%d): '%(num_iter))
+            sys.stdout.write('Iterations (%d): ' % (num_iter))
         times = []
         for i in xrange(num_iter):
             if np.random.rand() < migration_prob:
@@ -457,7 +457,7 @@ class Model(object):
                     sys.stdout.write('x ')
                 self._migrate()
             if self._verbose:
-                sys.stdout.write('%d '%(i+1))
+                sys.stdout.write('%d ' % (i+1))
                 sys.stdout.flush()
             stime = time.time()
             # evolve the population to the next generation
@@ -471,26 +471,27 @@ class Model(object):
     def calc_log_prior(self, *props):
         # set starting log_priors
         log_priors = [np.zeros(len(p)) for p in props]
-        
+
         # loop over params
-        for i,param in enumerate(self._params):
-            if hasattr(param.prior,"pdf"):
+        for i, param in enumerate(self._params):
+            if hasattr(param.prior, "pdf"):
                 # it's not a fixed value
-                # pick props and make sure to pass all into pdf at the same time
+                # pick props and make sure to pass all
+                # into pdf at the same time
                 # to ensure using the same prior dist
-                p = np.hstack([props[j][:,i][:,np.newaxis]
+                p = np.hstack([props[j][:, i][:, np.newaxis]
                                for j in range(len(props))])
                 log_pdf = np.log(param.prior.pdf(p))
 
                 for j in range(len(props)):
-                    log_priors[j] += log_pdf[:,j]
+                    log_priors[j] += log_pdf[:, j]
 
         # just pick singular column if there's only one passed in
         if len(log_priors) == 1:
             log_priors = log_priors[0]
         return log_priors
 
-    
+
 class HyperPrior(Model):
     """Model that acts as a prior for lower-level models
     """
@@ -500,14 +501,14 @@ class HyperPrior(Model):
                  burnin_proposal_gen=None,
                  use_priors=True,
                  verbose=False):
-        
+
         # handle the dist
         self._dist = dist
 
         # like_args will get filled in later
         super(HyperPrior, self).__init__(name=name,
                                          params=params,
-                                         like_fun=self._dist_like, 
+                                         like_fun=self._dist_like,
                                          num_chains=num_chains,
                                          proposal_gen=proposal_gen,
                                          burnin_proposal_gen=burnin_proposal_gen,
@@ -539,15 +540,15 @@ class HyperPrior(Model):
         #     self._cur_ind = [[np.random.randint(0,m['model']._num_chains)
         #                       for m in args]
         #                      for p in pop]
-            
+
         # loop over population (eventually parallelize this)
-        d_args = [pop[:,i] for i in range(pop.shape[1])]
+        d_args = [pop[:, i] for i in range(pop.shape[1])]
         d = self._dist(*d_args)
         for m in args:
-            if not hasattr(m['model'],'_particles'):
+            if not hasattr(m['model'], '_particles'):
                 return -np.ones(len(pop))*np.inf
-            log_like += np.log(d.pdf(m['model']._particles[-1][:,m['param_ind']]))
-            
+            log_like += np.log(d.pdf(m['model']._particles[-1][:, m['param_ind']]))
+
         # for i,p in enumerate(pop):
         #     # set up the distribution
         #     d = self._dist(*p)
@@ -579,21 +580,22 @@ class HyperPrior(Model):
             chains = np.arange(self._num_chains)
         else:
             # pick randomly
-            chains = np.random.randint(0,self._num_chains,len(vals))
+            chains = np.random.randint(0, self._num_chains, len(vals))
 
         # generate the pdf using the likelihood func
         pop = self._particles[-1][chains]
-        args = [pop[:,i] for i in range(pop.shape[1])]
+        args = [pop[:, i] for i in range(pop.shape[1])]
         d = self._dist(*args)
-        #p = np.hstack([d.pdf(vals[:,i]) for i in range(vals.shape[1])])
+        # p = np.hstack([d.pdf(vals[:,i]) for i in range(vals.shape[1])])
         if np.ndim(vals) > 1:
-            p = np.vstack([d.pdf(vals[:,i]) for i in range(vals.shape[1])]).T
+            p = np.vstack([d.pdf(vals[:, i])
+                           for i in range(vals.shape[1])]).T
         else:
             p = d.pdf(vals)
-        #p = d.pdf(vals.T).T
-        #p = self._dist(*self._particles[-1][chains]).pdf(vals)        
-        #p = np.array([self._dist(*self._particles[-1][ind]).pdf(vals[i])
-        #              for i,ind in enumerate(chains)])
+        # p = d.pdf(vals.T).T
+        # p = self._dist(*self._particles[-1][chains]).pdf(vals)
+        # p = np.array([self._dist(*self._particles[-1][ind]).pdf(vals[i])
+        #               for i,ind in enumerate(chains)])
         return p
 
     def rvs(self, size):
@@ -606,13 +608,13 @@ class HyperPrior(Model):
             chains = np.arange(self._num_chains)
         else:
             # pick randomly
-            chains = np.random.randint(0,self._num_chains,size[0])
+            chains = np.random.randint(0, self._num_chains, size[0])
 
         # generate the random vars using the likelihood func
-        #pop = self._particles[-1][chains]
-        #r = self._dist(*(pop[:,i] for i in range(pop.shape[1]))).rvs(size[1:])
+        # pop = self._particles[-1][chains]
+        # r = self._dist(*(pop[:,i] for i in range(pop.shape[1]))).rvs(size[1:])
         r = np.array([self._dist(*self._particles[-1][ind]).rvs(size[1:])
-                      for i,ind in enumerate(chains)])
+                      for i, ind in enumerate(chains)])
         return r.reshape(size)
 
 
@@ -649,7 +651,7 @@ class FixedParams(Model):
 
         # init the Model parent
         Model.__init__(self, name, new_params,
-                       like_fun=self._fixed_like, 
+                       like_fun=self._fixed_like,
                        num_chains=num_chains,
                        proposal_gen=proposal_gen,
                        burnin_proposal_gen=burnin_proposal_gen,

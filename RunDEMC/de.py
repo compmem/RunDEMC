@@ -24,26 +24,26 @@ class Proposal(object):
         raise NotImplemented("You must define this method in a subclass.")
 
     def __call__(self, pop, weights, params=None):
-        return self.generate(pop,weights,params)
+        return self.generate(pop, weights, params)
 
-    
+
 class DE(Proposal):
     """
     Differential evolution proposal.
     """
-    def __init__(self, CR=1.0, gamma=(0.5,1.0), 
-                 gamma_best=(0.0,0.0), epsilon=.001, 
+    def __init__(self, CR=1.0, gamma=(0.5, 1.0),
+                 gamma_best=(0.0, 0.0), epsilon=.001,
                  rand_base=False):
         self._CR = CR
         if np.isscalar(gamma):
             # turn into tuple range
-            gamma = (gamma,gamma)
+            gamma = (gamma, gamma)
         self._gamma = gamma
         if gamma_best is None:
             gamma_best = gamma
         elif np.isscalar(gamma_best):
             # turn into tuple range
-            gamma_best = (gamma_best,gamma_best)
+            gamma_best = (gamma_best, gamma_best)
         self._gamma_best = gamma_best
         self._rand_base = rand_base
         self._epsilon = epsilon
@@ -56,7 +56,7 @@ class DE(Proposal):
         proposal = np.ones_like(pop)*np.nan
 
         # make sure weights not zero
-        if hasattr(np,"float128"):
+        if hasattr(np, "float128"):
             tweights = np.exp(np.float128(weights)) + .0000001  #np.finfo(weights.dtype).eps
         else:
             tweights = np.exp(np.float64(weights)) + .0000001
@@ -75,17 +75,17 @@ class DE(Proposal):
         # see how many fixed params there are
         fixed = np.zeros(proposal.shape[1], dtype=np.bool)
         if params:
-            for i,param in enumerate(params):
-                if param._fixed or not hasattr(param.prior,"pdf"):
+            for i, param in enumerate(params):
+                if param._fixed or not hasattr(param.prior, "pdf"):
                     fixed[i] = True
         #non_fixed = np.where(~fixed)[0]
-        
+
         # get the permuted base_inds
         base_inds = np.random.permutation(len(proposal))
-        
+
         # loop generating proposals
         for p in xrange(len(proposal)):
-            while np.any(np.isnan(proposal[p])):# or \
+            while np.any(np.isnan(proposal[p])):  # or \
                   #np.any([params[i].prior.pdf(proposal[p][i])==0.0
                   #        for i in non_fixed]):
                 # generate proposal
@@ -95,19 +95,20 @@ class DE(Proposal):
 
                 # define which particles to avoid when sampling
                 to_avoid = [p]
-                
-                # pick best particle probabilistically (works possibly too well)
+
+                # pick best particle probabilistically
+                # (works possibly too well)
                 if gamma_best > 0.0:
                     best_ind = np.nonzero(np.random.rand() < cum_w_sum)[0][0]
                     to_avoid.append(best_ind)
-                
+
                 # decide the base ind (rand or local)
                 if self._rand_base:
                     base_ind = base_inds[p]
                     to_avoid.append(base_ind)
                 else:
                     # do local
-                    base_ind = p    
+                    base_ind = p
 
                 # pick two more that are not p or best_ind
                 poss_ind = np.ones(len(proposal),dtype=np.bool)
@@ -118,8 +119,8 @@ class DE(Proposal):
                 proposal[p,fixed] = pop[p,fixed]
 
                 # DE_local_to_best (to not-fixed params)
-                proposal[p,~fixed] = (pop[base_ind] + 
-                                      (np.random.uniform(*self._gamma)*
+                proposal[p, ~fixed] = (pop[base_ind] + 
+                                       (gamma *
                                        (pop[ind[0]] -
                                         pop[ind[1]])))[~fixed]
                 if gamma_best > 0.0:
