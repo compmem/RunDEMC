@@ -11,12 +11,11 @@ import sys
 ext_modules = []
 
 # define the setup
-setup(name='RunDEMC', 
-      version=vstr, 
+setup(name='RunDEMC',
+      version='0.1.0',
       maintainer=['Per B. Sederberg'],
       maintainer_email=['psederberg@gmail.com'],
       url=['http://github.com/compmem/RunDEMC'],
-      packages=['RunDEMC','RunDEMC.tests'],
-      ext_modules = ext_modules
+      packages=['RunDEMC', 'RunDEMC.tests'],
+      ext_modules=ext_modules
       )
-
