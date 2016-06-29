@@ -275,9 +275,9 @@ def fast_1d_kde(x, nx=200, extents=None, weights=None,
     return grid,np.linspace(xmin,xmax,nx)#+dx
 
 
-def fast_pdf(dat,x,nbins,extrema=None):
-    yg,xg = fast_1d_kde(dat,nx=nbins,extents=extrema)
-    pdf = np.interp(x,xg,yg)
+def fast_pdf(dat, x, nbins, extrema=None):
+    yg, xg = fast_1d_kde(dat, nx=nbins, extents=extrema)
+    pdf = np.interp(x, xg, yg, left=0, right=0)
     return pdf
 
 def vhist(h,b=None,reverse=False):
