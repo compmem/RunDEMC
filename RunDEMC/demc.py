@@ -104,12 +104,12 @@ class Model(object):
                      Posts as an array.
                      """)
 
-    default_prop_gen = DE(gamma_best=0.0,rand_base=False)
-    default_burnin_prop_gen = DE(gamma_best=None,rand_base=True)
-    
+    default_prop_gen = DE(gamma_best=0.0, rand_base=False)
+    default_burnin_prop_gen = DE(gamma_best=None, rand_base=True)
+
     def __init__(self, name, params,
-                 like_fun, 
-                 like_args = None,
+                 like_fun,
+                 like_args=None,
                  num_chains=None,
                  proposal_gen=None,
                  burnin_proposal_gen=None,
@@ -173,12 +173,12 @@ class Model(object):
 
         # we have not initialized
         self._initialized = False
-        
+
     def _initialize(self, force=False, num_chains=None, partition=None):
         if self._initialized and not force:
             # already done
             return
-        
+
         if self._verbose:
             sys.stdout.write('Initializing: ')
             sys.stdout.flush()
@@ -188,7 +188,7 @@ class Model(object):
 
         # initialize the particles and log_likes
         self._num_params = len(self._params)
-        if not num_chains is None:
+        if num_chains is not None:
             self._num_chains = num_chains
         self._particles = []
         self._log_likes = []
@@ -198,7 +198,7 @@ class Model(object):
 
         # set the partition
         # see if we're modifying it
-        if not partition is None:
+        if partition is not None:
             if partition > len(self._params):
                 partition = len(self._params)
             self._partition = partition
@@ -209,16 +209,18 @@ class Model(object):
 
         # fill using init priors (for initialization)
         init_parts = self._num_chains*self._init_multiplier
-        pop = np.hstack([p.init_prior.rvs((init_parts,1))
-                         if hasattr(p.init_prior,"rvs")
-                         else np.ones((init_parts,1))*p.init_prior
+        pop = np.hstack([p.init_prior.rvs((init_parts, 1))
+                         if hasattr(p.init_prior, "rvs")
+                         else np.ones((init_parts, 1))*p.init_prior
                          for p in self._params])
+        if pop.ndim < 2:
+            pop = pop[:, np.newaxis]
 
         # get the initial log_likes
         if self._verbose:
-            sys.stdout.write('%d(%d) '%(init_parts, self._num_chains))
+            sys.stdout.write('%d(%d) ' % (init_parts, self._num_chains))
             sys.stdout.flush()
-        log_likes,posts = self._calc_log_likes(pop)
+        log_likes, posts = self._calc_log_likes(pop)
 
         # make sure not zero
         if not self._initial_zeros_ok:
@@ -226,31 +228,41 @@ class Model(object):
             good_ind = ~ind
             while good_ind.sum() < self._num_chains:
                 if self._verbose:
-                    sys.stdout.write('%d(%d) '%(ind.sum(),self._num_chains-good_ind.sum()))
+                    sys.stdout.write('%d(%d) ' %
+                                     (ind.sum(),
+                                      self._num_chains-good_ind.sum()))
                     sys.stdout.flush()
-                pop[ind,:] = np.hstack([p.init_prior.rvs((ind.sum(),1))
-                                        if hasattr(p.init_prior,"rvs")
-                                        else np.ones((ind.sum(),1))*p.init_prior
-                                        for p in self._params])
-                log_likes[ind],temp_posts = self._calc_log_likes(pop[ind])
-                if not temp_posts is None:
+                npop = np.hstack([p.init_prior.rvs((ind.sum(), 1))
+                                  if hasattr(p.init_prior, "rvs")
+                                  else np.ones((ind.sum(), 1))*p.init_prior
+                                  for p in self._params])
+                if npop.ndim < 2:
+                    npop = npop[:, np.newaxis]
+
+                pop[ind, :] = npop
+
+                # calc the log likes for those new pops
+                log_likes[ind], temp_posts = self._calc_log_likes(pop[ind])
+                if temp_posts is not None:
                     posts[ind] = temp_posts
-                ind = np.isinf(log_likes)|np.isnan(log_likes)
+                ind = np.isinf(log_likes) | np.isnan(log_likes)
                 good_ind = ~ind
 
             # save the good pop
             good_ind = ~ind
             pop = pop[good_ind]
+            if pop.ndim < 2:
+                pop = pop[:, np.newaxis]
             log_likes = log_likes[good_ind]
-            if not posts is None:
+            if posts is not None:
                 posts = posts[good_ind]
-        
+
         if len(pop) > self._num_chains:
             pop = pop[:self._num_chains]
             log_likes = log_likes[:self._num_chains]
-            if not posts is None:
+            if posts is not None:
                 posts = posts[:self._num_chains]
-                
+
         # append the initial log_likes and particles
         self._times.append(time.time()-stime)
         self._log_likes.append(log_likes)
@@ -261,7 +273,7 @@ class Model(object):
         else:
             self._weights.append(log_likes)
         self._particles.append(pop)
-        if not posts is None:
+        if posts is not None:
             self._posts.append(posts)
 
         # say we've initialized
@@ -270,26 +282,26 @@ class Model(object):
     def apply_param_transform(self, pop):
         if self._transform_needed:
             pop = pop.copy()
-            for i,p in enumerate(self._params):
+            for i, p in enumerate(self._params):
                 if p.transform:
-                    pop[...,i] = p.transform(pop[...,i])
+                    pop[..., i] = p.transform(pop[..., i])
         return pop
-        
+
     def _calc_log_likes(self, pop):
         # apply transformation if necessary
         pop = self.apply_param_transform(pop)
-        
+
         # first get the log likelihood for the pop
         out = self._like_fun(pop, *(self._like_args))
         if isinstance(out, tuple):
             # split into likes and posts
-            log_likes,posts = out
+            log_likes, posts = out
         else:
             # just likes
             log_likes = out
             posts = None
 
-        return log_likes,posts
+        return log_likes, posts
 
     def _get_part_ind(self):
         # grab the current partition indices
@@ -300,7 +312,7 @@ class Model(object):
 
         # return the pre-rolled value
         return parts
-    
+
     def _crossover(self, burnin=False):
         if burnin:
             prop_gen = self._burnin_prop_gen
