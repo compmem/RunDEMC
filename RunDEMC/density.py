@@ -280,7 +280,8 @@ def fast_pdf(dat, x, nbins, extrema=None):
     pdf = np.interp(x, xg, yg, left=0, right=0)
     return pdf
 
-def vhist(h,b=None,reverse=False):
+
+def vhist(h, b=None, reverse=False):
     """
     Create a variable bin-width histogram from an existing histogram
     by combining bins.
@@ -301,27 +302,28 @@ def vhist(h,b=None,reverse=False):
     if reverse:
         h.reverse()
         b.reverse()
-        
+
     merged = True
     while merged:
         merged = False
-        for i in range(len(h),1,-1):
+        for i in range(len(h), 1, -1):
             # check for immediate identity
             if h[i-2] == h[i-1]:
                 # merge them and continue
                 h.pop(i-1)
                 b.pop(i-1)
                 continue
-            if (i-3)<0:
+            if (i-3) < 0:
                 # skip b/c we need 3
                 continue
             # pick the three bins to process
             v = h[i-3:i]
 
-            # Merge if 
+            # Merge if
             #   1) all three are the same value or
             #   2) 0>1<2 (i.e., a drop, then rise)
-            if ((v[0]==v[1])&(v[1]==v[2])) or ((v[0]>v[1])&(v[2]>v[1])):
+            if ((v[0] == v[1]) & (v[1] == v[2])) or \
+               ((v[0] > v[1]) & (v[2] > v[1])):
                 # combine the three bins into two
                 # say we merged
                 merged = True
@@ -349,7 +351,8 @@ def vhist(h,b=None,reverse=False):
         # reverse it back
         h.reverse()
         b.reverse()
-    return h,b    
+    return h, b
+
 
 def hist_pdf(dat,x,nbins,extrema=None):
     """
@@ -399,6 +402,7 @@ def hist_pdf(dat,x,nbins,extrema=None):
         
     return pdf/len(bs) #,b,h
 
+
 def hist_pdf2(dat,x,nbins,extrema=None,scale=0.0):
     """
     Generate pdf from histograms.
@@ -428,6 +432,7 @@ def hist_pdf2(dat,x,nbins,extrema=None,scale=0.0):
 
     return pdf
 
+
 def hist_stack(dat,x,nbins,extrema=None):
     """
     """
@@ -442,10 +447,11 @@ def hist_stack(dat,x,nbins,extrema=None):
         # the endpoints
         bw = xdist/float(nb-1)
         bins = np.array([extrema[0]+bw*i-bw*.5 for i in range(nb+1)])
-        hists.append(np.histogram(dat,bins,normed=True)[0])
+        hists.append(np.histogram(dat, bins, normed=True)[0])
         xvals.append(bins[:-1]+(bw*.5))
 
-    return hists,xvals
+    return hists, xvals
+
 
 def freq_pmf(dat,x,nbins,extrema=None):
     """

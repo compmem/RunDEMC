@@ -24,7 +24,7 @@ except ImportError:
 # test for joblib
 try:
     import joblib
-    from joblib import Parallel, delayed
+    from joblib import delayed
 except ImportError:
     joblib = None
 
@@ -58,6 +58,8 @@ class Param(object):
 
 class Model(object):
     """
+    Model with params and custom likelihood function.
+
     Differential Evolution Monte Carlo
     ...and so much more...
 
@@ -126,7 +128,7 @@ class Model(object):
         self._name = name
         self._params = params  # can't be None
         if num_chains is None:
-            num_chains = int(np.min([len(params)*10,100]))
+            num_chains = int(np.min([len(params)*10, 100]))
         self._num_chains = num_chains
         self._initial_zeros_ok = initial_zeros_ok
         self._init_multiplier = init_multiplier
@@ -326,8 +328,8 @@ class Model(object):
 
         # apply the partition by copying prev values back
         parts = self._get_part_ind()
-        proposal[:,~parts] = self._particles[-1][:,~parts]
-        
+        proposal[:, ~parts] = self._particles[-1][:, ~parts]
+
         return proposal
 
     def _migrate(self):

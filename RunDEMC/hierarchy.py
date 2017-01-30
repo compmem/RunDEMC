@@ -216,8 +216,9 @@ class Hierarchy(object):
             # see if launch pools
             if not (scoop and scoop.IS_RUNNING) and self._parallel:
                 # do what <with> enter would do
-                self._parallel._managed_pool = True
-                self._parallel._initialize_pool()
+                #self._parallel._managed_pool = True
+                #self._parallel._initialize_pool()
+                self._parallel.__enter__()
 
             sys.stdout.write('Iterations (%d): ' % (num_iter))
 
@@ -289,5 +290,6 @@ class Hierarchy(object):
             # see if clean pools
             if not (scoop and scoop.IS_RUNNING) and self._parallel:
                 # do what <with> exit would do
-                self._parallel._terminate_pool()
-                self._parallel._managed_pool = False
+                #self._parallel._terminate_pool()
+                #self._parallel._managed_pool = False
+                self._parallel.__exit__(None, None, None)
