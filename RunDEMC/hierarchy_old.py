@@ -8,7 +8,7 @@
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ##
 
 import numpy as np
-from dists import normal, invgamma
+from .dists import normal, invgamma
 
 class HyperParam(object):
     """Normal distribution used as a hyperparameter.

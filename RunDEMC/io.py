@@ -9,7 +9,7 @@
 
 
 import gzip
-import cPickle as pickle
+import pickle as pickle
 
 def make_dict(abc, burnin=None, **kwargs):
     return dict(name=abc._name,

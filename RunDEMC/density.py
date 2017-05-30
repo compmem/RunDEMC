@@ -16,41 +16,41 @@ import scipy.signal
 
 """
 A faster gaussian kernel density estimate (KDE).
-Intended for computing the KDE on a regular grid (different use case than 
+Intended for computing the KDE on a regular grid (different use case than
 scipy's original scipy.stats.kde.gaussian_kde()).
 -Joe Kington
 """
 __license__ = 'MIT License <http://www.opensource.org/licenses/mit-license.php>'
 
-def fast_2d_kde(x, y, gridsize=(200, 200), extents=None, 
+def fast_2d_kde(x, y, gridsize=(200, 200), extents=None,
                 nocorrelation=False, weights=None):
     """
     Performs a gaussian kernel density estimate over a regular grid using a
     convolution of the gaussian kernel with a 2D histogram of the data.
 
-    This function is typically several orders of magnitude faster than 
-    scipy.stats.kde.gaussian_kde for large (>1e7) numbers of points and 
+    This function is typically several orders of magnitude faster than
+    scipy.stats.kde.gaussian_kde for large (>1e7) numbers of points and
     produces an essentially identical result.
 
     Input:
         x: The x-coords of the input data points
         y: The y-coords of the input data points
-        gridsize: (default: 200x200) A (nx,ny) tuple of the size of the output 
+        gridsize: (default: 200x200) A (nx,ny) tuple of the size of the output
             grid
         extents: (default: extent of input data) A (xmin, xmax, ymin, ymax)
             tuple of the extents of output grid
         nocorrelation: (default: False) If True, the correlation between the
             x and y coords will be ignored when preforming the KDE.
-        weights: (default: None) An array of the same shape as x & y that 
+        weights: (default: None) An array of the same shape as x & y that
             weighs each sample (x_i, y_i) by each value in weights (w_i).
             Defaults to an array of ones the same size as x & y.
     Output:
-        A gridded 2D kernel density estimate of the input points. 
+        A gridded 2D kernel density estimate of the input points.
     """
     #---- Setup --------------------------------------------------------------
     x, y = np.asarray(x), np.asarray(y)
     x, y = np.squeeze(x), np.squeeze(y)
-    
+
     if x.size != y.size:
         raise ValueError('Input x & y arrays must be the same size!')
 
@@ -71,7 +71,7 @@ def fast_2d_kde(x, y, gridsize=(200, 200), extents=None,
         xmin, xmax = x.min(), x.max()
         ymin, ymax = y.min(), y.max()
     else:
-        xmin, xmax, ymin, ymax = map(float, extents)
+        xmin, xmax, ymin, ymax = list(map(float, extents))
     dx = (xmax - xmin) / (nx - 1)
     dy = (ymax - ymin) / (ny - 1)
 
@@ -105,7 +105,7 @@ def fast_2d_kde(x, y, gridsize=(200, 200), extents=None,
     kern_nx, kern_ny = np.round(scotts_factor * 2 * np.pi * std_devs)
 
     # Determine the bandwidth to use for the gaussian kernel
-    inv_cov = np.linalg.inv(cov * scotts_factor**2) 
+    inv_cov = np.linalg.inv(cov * scotts_factor**2)
 
     # x & y (pixel) coords of the kernel grid, with <x,y> = <0,0> in center
     xx = np.arange(kern_nx, dtype=np.float) - kern_nx / 2.0
@@ -114,9 +114,9 @@ def fast_2d_kde(x, y, gridsize=(200, 200), extents=None,
 
     # Then evaluate the gaussian function on the kernel grid
     kernel = np.vstack((xx.flatten(), yy.flatten()))
-    kernel = np.dot(inv_cov, kernel) * kernel 
-    kernel = np.sum(kernel, axis=0) / 2.0 
-    kernel = np.exp(-kernel) 
+    kernel = np.dot(inv_cov, kernel) * kernel
+    kernel = np.sum(kernel, axis=0) / 2.0
+    kernel = np.exp(-kernel)
     kernel = kernel.reshape((kern_ny, kern_nx))
 
     #---- Produce the kernel density estimate --------------------------------
@@ -126,7 +126,7 @@ def fast_2d_kde(x, y, gridsize=(200, 200), extents=None,
     grid = sp.signal.convolve2d(grid, kernel, mode='same', boundary='fill').T
 
     # Normalization factor to divide result by so that units are in the same
-    # units as scipy.stats.kde.gaussian_kde's output.  
+    # units as scipy.stats.kde.gaussian_kde's output.
     norm_factor = 2 * np.pi * cov * scotts_factor**2
     norm_factor = np.linalg.det(norm_factor)
     norm_factor = n * dx * dy * np.sqrt(norm_factor)
@@ -137,7 +137,7 @@ def fast_2d_kde(x, y, gridsize=(200, 200), extents=None,
     return np.flipud(grid)
 
 
-def fast_1d_kde(x, nx=200, extents=None, weights=None, 
+def fast_1d_kde(x, nx=200, extents=None, weights=None,
                 kstr='Gaussian'):
     """
     Performs a kernel density estimate over a regular grid using a
@@ -156,7 +156,7 @@ def fast_1d_kde(x, nx=200, extents=None, weights=None,
         weights: (default: None) An array of the same shape as x
             weighs each sample x_i by each value in weights (w_i).
             Defaults to an array of ones the same size as x.
-        kstr: (default: 'Gaussian') String indicating the kernel 
+        kstr: (default: 'Gaussian') String indicating the kernel
             to be used.
     Output:
         A gridded 1D kernel density estimate of the input points.
@@ -173,7 +173,7 @@ def fast_1d_kde(x, nx=200, extents=None, weights=None,
         ktype = 'Epanechnikov'
     else:
         raise ValueError("Unknown kernel type.")
-    
+
     n = x.size
 
     if weights is None:
@@ -189,7 +189,7 @@ def fast_1d_kde(x, nx=200, extents=None, weights=None,
     if extents is None:
         xmin, xmax = x.min(), x.max()
     else:
-        xmin, xmax = map(float, extents)
+        xmin, xmax = list(map(float, extents))
     dx = (xmax - xmin) / (nx - 1)
 
     #---- Preliminary Calculations -------------------------------------------
@@ -246,7 +246,7 @@ def fast_1d_kde(x, nx=200, extents=None, weights=None,
         #kernel = kernel.reshape((kern_ny, kern_nx))
     elif ktype == 'Epanechnikov':
         kernel = (1-(xx*dx)**2)*.75
-        
+
 
     #---- Produce the kernel density estimate --------------------------------
 
@@ -270,7 +270,7 @@ def fast_1d_kde(x, nx=200, extents=None, weights=None,
     grid /= norm_factor
 
     #1/0
-    
+
     #np.squeeze(np.flipud(grid))
     return grid,np.linspace(xmin,xmax,nx)#+dx
 
@@ -292,7 +292,7 @@ def vhist(h, b=None, reverse=False):
     """
     # make the b if necessary
     if b is None:
-        b = range(len(h))
+        b = list(range(len(h)))
 
     # make sure they are lists
     h = list(h)
@@ -394,12 +394,12 @@ def hist_pdf(dat,x,nbins,extrema=None):
         h,b = vhist(hs[s],bs[s],reverse=reverse)
         h = np.asarray(h)
         b = np.asarray(b)
-        
+
         # remember to shift by (bw*.5)
         #pdf += np.interp(x,np.asarray(b[s][:-1])+(bw*.5),h[s])
         # combine interpolation from each edge
         pdf += (np.interp(x,b[:-1],h)+np.interp(x,b[1:],h))/2.
-        
+
     return pdf/len(bs) #,b,h
 
 
@@ -511,7 +511,7 @@ def calc_scale_factor(dat,nbins=200,scale=1.0,verbose=True):
 
     # return best result
     if verbose:
-        print best_scale
+        print(best_scale)
     return float(best_scale)
 
 
@@ -519,7 +519,7 @@ def calc_scale_factor(dat,nbins=200,scale=1.0,verbose=True):
 def boxcox(x, lambdax):
     """
     Performs a box-cox transformation to data vector X.
-    WARNING: elements of X should be all positive! 
+    WARNING: elements of X should be all positive!
     """
     if np.any(x<=0):
        raise ValueError("Nonpositive value(s) in X vector")
@@ -527,13 +527,13 @@ def boxcox(x, lambdax):
 
 def boxcox_loglike(x, lambdax):
     """
-    Computes the log-likelihood function for a transformed vector Xtransform.     
+    Computes the log-likelihood function for a transformed vector Xtransform.
     """
     n = len(x)
     xb = boxcox(x, lambdax)
     S2 = (lambdax - 1.0) * np.log(x).sum()
     S = np.sum((xb-xb.mean())**2)
-    S1= (-n/2.0)*np.log(S/n) 
+    S1= (-n/2.0)*np.log(S/n)
     return  float(S2+S1)
 
 def best_boxcox_lambdax(x, lambdax=0, verbose=False):
@@ -552,36 +552,36 @@ def best_boxcox_lambdax(x, lambdax=0, verbose=False):
                                        disp=disp)
     return float(best_lambdax)
 
-from dists import normal
-def kdensity(x, extrema=None, kernel="gaussian", 
-            binwidth=None, nbins=512, weights=None, 
-    #bw="nrd0", 
+from .dists import normal
+def kdensity(x, extrema=None, kernel="gaussian",
+            binwidth=None, nbins=512, weights=None,
+    #bw="nrd0",
             adjust=1.0, cut=3, xx=None):
     """
     """
-    # function (x, bw = "nrd0", adjust = 1, kernel = c("gaussian", 
-    #     "epanechnikov", "rectangular", "triangular", "biweight", 
-    #     "cosine", "optcosine"), weights = NULL, window = kernel, 
-    #     width, give.Rkern = FALSE, n = 512, from, to, cut = 3, na.rm = FALSE, 
-    #     ...) 
+    # function (x, bw = "nrd0", adjust = 1, kernel = c("gaussian",
+    #     "epanechnikov", "rectangular", "triangular", "biweight",
+    #     "cosine", "optcosine"), weights = NULL, window = kernel,
+    #     width, give.Rkern = FALSE, n = 512, from, to, cut = 3, na.rm = FALSE,
+    #     ...)
     # {
-    #     if (length(list(...))) 
+    #     if (length(list(...)))
     #         warning("non-matched further arguments are disregarded")
-    #     if (!missing(window) && missing(kernel)) 
+    #     if (!missing(window) && missing(kernel))
     #         kernel <- window
     #     kernel <- match.arg(kernel)
-    #     if (give.Rkern) 
-    #         return(switch(kernel, gaussian = 1/(2 * sqrt(pi)), rectangular = sqrt(3)/6, 
-    #             triangular = sqrt(6)/9, epanechnikov = 3/(5 * sqrt(5)), 
-    #             biweight = 5 * sqrt(7)/49, cosine = 3/4 * sqrt(1/3 - 
+    #     if (give.Rkern)
+    #         return(switch(kernel, gaussian = 1/(2 * sqrt(pi)), rectangular = sqrt(3)/6,
+    #             triangular = sqrt(6)/9, epanechnikov = 3/(5 * sqrt(5)),
+    #             biweight = 5 * sqrt(7)/49, cosine = 3/4 * sqrt(1/3 -
     #                 2/pi^2), optcosine = sqrt(1 - 8/pi^2) * pi^2/16))
-    #     if (!is.numeric(x)) 
+    #     if (!is.numeric(x))
     #         stop("argument 'x' must be numeric")
     #     name <- deparse(substitute(x))
     #     x <- as.vector(x)
     #     x.na <- is.na(x)
     #     if (any(x.na)) {
-    #         if (na.rm) 
+    #         if (na.rm)
     #             x <- x[!x.na]
     #         else stop("'x' contains missing values")
     #     }
@@ -598,11 +598,11 @@ def kdensity(x, extrema=None, kernel="gaussian",
     #         totMass <- nx/N
     #     }
     #     else {
-    #         if (length(weights) != N) 
+    #         if (length(weights) != N)
     #             stop("'x' and 'weights' have unequal length")
-    #         if (!all(is.finite(weights))) 
+    #         if (!all(is.finite(weights)))
     #             stop("'weights' must all be finite")
-    #         if (any(weights < 0)) 
+    #         if (any(weights < 0))
     #             stop("'weights' must not be negative")
     #         wsum <- sum(weights)
     #         if (any(!x.finite)) {
@@ -610,7 +610,7 @@ def kdensity(x, extrema=None, kernel="gaussian",
     #             totMass <- sum(weights)/wsum
     #         }
     #         else totMass <- 1
-    #         if (!isTRUE(all.equal(1, wsum))) 
+    #         if (!isTRUE(all.equal(1, wsum)))
     #             warning("sum(weights) != 1  -- will not get true density")
     #     }
     if weights is None:
@@ -618,10 +618,10 @@ def kdensity(x, extrema=None, kernel="gaussian",
         totMass = nx/float(N)
     else:
         totMass = 1.0
-        
+
     #     n.user <- n
     #     n <- max(n, 512)
-    #     if (n > 512) 
+    #     if (n > 512)
     #         n <- 2^ceiling(log2(n))
     nbins_user = nbins
     nbins = max(nbins,512)
@@ -629,43 +629,43 @@ def kdensity(x, extrema=None, kernel="gaussian",
         nbins = int(2**np.ceil(np.log2(nbins)))
     #     if (missing(bw) && !missing(width)) {
     #         if (is.numeric(width)) {
-    #             fac <- switch(kernel, gaussian = 4, rectangular = 2 * 
-    #                 sqrt(3), triangular = 2 * sqrt(6), epanechnikov = 2 * 
-    #                 sqrt(5), biweight = 2 * sqrt(7), cosine = 2/sqrt(1/3 - 
+    #             fac <- switch(kernel, gaussian = 4, rectangular = 2 *
+    #                 sqrt(3), triangular = 2 * sqrt(6), epanechnikov = 2 *
+    #                 sqrt(5), biweight = 2 * sqrt(7), cosine = 2/sqrt(1/3 -
     #                 2/pi^2), optcosine = 2/sqrt(1 - 8/pi^2))
     #             bw <- width/fac
     #         }
-    #         if (is.character(width)) 
+    #         if (is.character(width))
     #             bw <- width
     #     }
     #     if (is.character(bw)) {
-    #         if (nx < 2) 
+    #         if (nx < 2)
     #             stop("need at least 2 points to select a bandwidth automatically")
-    #         bw <- switch(tolower(bw), nrd0 = bw.nrd0(x), nrd = bw.nrd(x), 
-    #             ucv = bw.ucv(x), bcv = bw.bcv(x), sj = , `sj-ste` = bw.SJ(x, 
-    #                 method = "ste"), `sj-dpi` = bw.SJ(x, method = "dpi"), 
+    #         bw <- switch(tolower(bw), nrd0 = bw.nrd0(x), nrd = bw.nrd(x),
+    #             ucv = bw.ucv(x), bcv = bw.bcv(x), sj = , `sj-ste` = bw.SJ(x,
+    #                 method = "ste"), `sj-dpi` = bw.SJ(x, method = "dpi"),
     #             stop("unknown bandwidth rule"))
     #     }
     bw = nrd0(x)
-    #     if (!is.finite(bw)) 
+    #     if (!is.finite(bw))
     #         stop("non-finite 'bw'")
     #     bw <- adjust * bw
     bw *= adjust
 
     # for some reason I have to multiply bw by 2
     #bw *= 2.
-    
-    #     if (bw <= 0) 
+
+    #     if (bw <= 0)
     #         stop("'bw' is not positive.")
-    #     if (missing(from)) 
+    #     if (missing(from))
     #         from <- min(x) - cut * bw
-    #     if (missing(to)) 
+    #     if (missing(to))
     #         to <- max(x) + cut * bw
     if extrema is None:
         extrema = (np.min(x) - cut*bw, np.max(x) + cut*bw)
-    #     if (!is.finite(from)) 
+    #     if (!is.finite(from))
     #         stop("non-finite 'from'")
-    #     if (!is.finite(to)) 
+    #     if (!is.finite(to))
     #         stop("non-finite 'to'")
     #     lo <- from - 4 * bw
     #     up <- to + 4 * bw
@@ -683,12 +683,12 @@ def kdensity(x, extrema=None, kernel="gaussian",
     # Avoiding np.histogram2d due to excessive memory usage with many points
     y = sp.sparse.coo_matrix((weights, np.vstack([xi,np.zeros_like(xi)])),
                              shape=(nbins,1)).toarray()[:,0] * totMass
-    
+
     #     kords <- seq.int(0, 2 * (up - lo), length.out = 2L * n)
     kords = np.linspace(0,2*(up-lo),2*nbins)
     #     kords[(n + 2):(2 * n)] <- -kords[n:2]
     kords[nbins+1:] = -kords[nbins-1:0:-1]
-    #     kords <- switch(kernel, gaussian = dnorm(kords, sd = bw), 
+    #     kords <- switch(kernel, gaussian = dnorm(kords, sd = bw),
     #         rectangular = {
     #             a <- bw * sqrt(3)
     #             ifelse(abs(kords) < a, 0.5/a, 0)
@@ -706,11 +706,11 @@ def kdensity(x, extrema=None, kernel="gaussian",
     #             ifelse(ax < a, 15/16 * (1 - (ax/a)^2)^2/a, 0)
     #         }, cosine = {
     #             a <- bw/sqrt(1/3 - 2/pi^2)
-    #             ifelse(abs(kords) < a, (1 + cos(pi * kords/a))/(2 * 
+    #             ifelse(abs(kords) < a, (1 + cos(pi * kords/a))/(2 *
     #                 a), 0)
     #         }, optcosine = {
     #             a <- bw/sqrt(1 - 8/pi^2)
-    #             ifelse(abs(kords) < a, pi/4 * cos(pi * kords/(2 * 
+    #             ifelse(abs(kords) < a, pi/4 * cos(pi * kords/(2 *
     #                 a))/a, 0)
     #         })
 
@@ -742,8 +742,8 @@ def kdensity(x, extrema=None, kernel="gaussian",
     if xx is None:
         xx = np.linspace(extrema[0],extrema[1],nbins_user)
     pdf = np.interp(xx,xords,kords)
-    #     structure(list(x = x, y = approx(xords, kords, x)$y, bw = bw, 
-    #         n = N, call = match.call(), data.name = name, has.na = FALSE), 
+    #     structure(list(x = x, y = approx(xords, kords, x)$y, bw = bw,
+    #         n = N, call = match.call(), data.name = name, has.na = FALSE),
     #         class = "density")
     # }
 
@@ -754,7 +754,7 @@ def nrd0(x):
     """
     # <bytecode: 0x9939994>
     # <environment: namespace:stats>
-    # > 
+    # >
     # > getAnywhere('bw.nrd0')
     # A single object matching 'bw.nrd0' was found
     # It was found in the following places
@@ -762,13 +762,13 @@ def nrd0(x):
     #   namespace:stats
     # with value
 
-    # function (x) 
+    # function (x)
     # {
-    #     if (length(x) < 2L) 
+    #     if (length(x) < 2L)
     #         stop("need at least 2 data points")
     #     hi <- sd(x)
     hi = np.std(x)
-    #     if (!(lo <- min(hi, IQR(x)/1.34))) 
+    #     if (!(lo <- min(hi, IQR(x)/1.34)))
     #         (lo <- hi) || (lo <- abs(x[1L])) || (lo <- 1)
     lo = min(hi,IQR(x)/1.34)
     if lo == 0:
@@ -792,22 +792,22 @@ def IQR(x):
     #   namespace:stats
     # with value
 
-    # function (x, na.rm = FALSE, type = 7) 
-    # diff(quantile(as.numeric(x), c(0.25, 0.75), na.rm = na.rm, names = FALSE, 
+    # function (x, na.rm = FALSE, type = 7)
+    # diff(quantile(as.numeric(x), c(0.25, 0.75), na.rm = na.rm, names = FALSE,
     #     type = type))
     return np.diff(scipy.stats.mstats.mquantiles(x,[.25,.75]))
 
-    
+
 if __name__ == "__main__":
-    
+
     sdata = """
 .15 .09 .18 .10 .05 .12 .08
 .05 .08 .10 .07 .02 .01 .10
 .10 .10 .02 .10 .01 .40 .10
 .05 .03 .05 .15 .10 .15 .09
 .08 .18 .10 .20 .11 .30 .02
-.20 .20 .30 .30 .40 .30 .05 
+.20 .20 .30 .30 .40 .30 .05
 """
     X = np.asarray([float(x) for x in sdata.split()])
     best_lambdax = best_boxcox_lambdax(X, lambdax=0.0)
-    print best_lambdax, boxcox_loglike(X,best_lambdax)
+    print((best_lambdax, boxcox_loglike(X,best_lambdax)))

@@ -131,7 +131,7 @@ def q_ratios(pop, proposal, weights, gamma, epsilon):
     #                                  scale=2*epsilon).reshape(tval.shape).T),axis=0).sum()
 
     # loop over particles, getting the density
-    for p in xrange(len(pop)):
+    for p in range(len(pop)):
         # calc forward and back vals
         #temp=current + gamma*(theta[i,]-theta[j,]) + gamma*(theta[k,]-current)
         tval = pop[p] + gamma*(pop[i]-pop[j]) + gamma*(pop[k]-pop[p])

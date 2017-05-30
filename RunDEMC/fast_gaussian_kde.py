@@ -59,7 +59,7 @@ def fast_kde(x, y, gridsize=(200, 200), extents=None, nocorrelation=False, weigh
         xmin, xmax = x.min(), x.max()
         ymin, ymax = y.min(), y.max()
     else:
-        xmin, xmax, ymin, ymax = map(float, extents)
+        xmin, xmax, ymin, ymax = list(map(float, extents))
     dx = (xmax - xmin) / (nx - 1)
     dy = (ymax - ymin) / (ny - 1)
 
@@ -163,7 +163,7 @@ def fast_1d_kde(x, nx=200, extents=None, weights=None):
     if extents is None:
         xmin, xmax = x.min(), x.max()
     else:
-        xmin, xmax = map(float, extents)
+        xmin, xmax = list(map(float, extents))
     dx = (xmax - xmin) / (nx - 1)
 
     #---- Preliminary Calculations -------------------------------------------

@@ -14,7 +14,7 @@ import os
 import sys
 from scipy.stats import gaussian_kde,pearsonr
 
-from density import fast_2d_kde, kdensity
+from .density import fast_2d_kde, kdensity
 
 def joint_plot(particles,weights,burnin=50,names=None,legend=False,add_best=True,
                border=.1,sep=0.0,rot=None,fig=None,nxticks=5,nyticks=5,
@@ -29,7 +29,7 @@ def joint_plot(particles,weights,burnin=50,names=None,legend=False,add_best=True
         cmap._init()
         cmap._lut[:5,:] = 1.0
         cmap._lut[:20,-1] = np.linspace(0,1,20)
-        
+
     # get num grid
     n_p = particles.shape[-1]
 
@@ -40,7 +40,7 @@ def joint_plot(particles,weights,burnin=50,names=None,legend=False,add_best=True
     best_ind = weights[burnin:].ravel().argmax()
     indiv = [particles[burnin:,:,i].ravel()[best_ind]
              for i in range(particles.shape[-1])]
-    
+
     # set holder for axes
     ax = np.zeros((n_p,n_p),dtype=np.object)
     for i in range(n_p):
@@ -60,7 +60,7 @@ def joint_plot(particles,weights,burnin=50,names=None,legend=False,add_best=True
                 if False: #i==0:
                     if j>1:
                         sharey = ax[i,1]
-                else:                        
+                else:
                     sharey = ax[i,j-1]
             ax[i,j] = fig.add_axes((left,bottom,width,height),
                                    sharex=sharex, sharey=sharey)
@@ -68,7 +68,7 @@ def joint_plot(particles,weights,burnin=50,names=None,legend=False,add_best=True
 
             # clear it
             a.cla()
-            
+
             # show joint
             if take_log:
                 w = np.log(weights[burnin:,:].ravel())
@@ -114,7 +114,7 @@ def joint_plot(particles,weights,burnin=50,names=None,legend=False,add_best=True
                 cb.draw_all()
             if add_best:
                 a.plot(indiv[j],indiv[i],'rx',markersize=10,markeredgewidth=3)
-                    
+
             # set the n-ticks
             a.xaxis.set_major_locator(MaxNLocator(nxticks))
             a.yaxis.set_major_locator(MaxNLocator(nyticks))
@@ -126,16 +126,16 @@ def joint_plot(particles,weights,burnin=50,names=None,legend=False,add_best=True
             # turn on the grid if wanted
             if grid:
                 a.grid('on')
-            
+
             # clean labels
-            if i <> 0:
+            if i > 0 or i < 0:
                 for label in a.get_xticklabels():
                     label.set_visible(False)
             elif not rot is None:
                 for label in a.get_xticklabels():
                     label.set_rotation(rot)
                     #label.set_horizontalalignment('right')
-            if j <> n_p-1:
+            if j < n_p-1 or j > n_p-1:
                 for label in a.get_yticklabels():
                     label.set_visible(False)
 
@@ -160,7 +160,7 @@ def joint_plot(particles,weights,burnin=50,names=None,legend=False,add_best=True
         # remove all ticks
         a.set_xticks([])
         a.set_yticks([])
-        
+
 
     # now the bottom triangle
     for i in range(n_p):
@@ -193,7 +193,7 @@ def joint_plot(particles,weights,burnin=50,names=None,legend=False,add_best=True
             # remove all ticks
             a.set_xticks([])
             a.set_yticks([])
-        
+
     #pl.tight_layout()
     pl.show()
 
@@ -206,7 +206,7 @@ def violin_plot(data,positions=None,widths=None,ax=None,
     Create violin plots on an axis.
 
     fillargs defaults to dict(facecolor='y',alpha=0.3)
-    
+
     Modified from:
     http://pyinsci.blogspot.com/2009/09/violin-plot-with-matplotlib.html
     '''
@@ -225,9 +225,9 @@ def violin_plot(data,positions=None,widths=None,ax=None,
             elif nc == 1:
                 x = [x.ravel()]
             else:
-                x = [x[:,i] for i in xrange(nc)]
+                x = [x[:,i] for i in range(nc)]
         else:
-            raise ValueError, "input x can have no more than 2 dimensions"
+            raise ValueError
     if not hasattr(x[0], '__len__'):
         x = [x]
     col = len(x)
@@ -238,10 +238,10 @@ def violin_plot(data,positions=None,widths=None,ax=None,
     # set the axis
     if ax is None:
         ax = pl.gca()
-    
+
     # set positions and widths
     if positions is None:
-        positions = range(1, col + 1)
+        positions = list(range(1, col + 1))
     if widths is None:
         distance = max(positions) - min(positions)
         widths = min(0.15*max(distance,1.0), 0.5)
@@ -251,7 +251,7 @@ def violin_plot(data,positions=None,widths=None,ax=None,
     # process the fillargs
     fargs = dict(facecolor='y',alpha=0.3)
     fargs.update(fillargs)
-        
+
     # loop and add violins
     for d,p,w in zip(data,positions,widths):
         # redo with kdensity
@@ -307,7 +307,7 @@ def joint_movie(x,y,weights,burnin,names=('x','y'),fps=10,
             cb.set_alpha(1.0)
             cb.set_label('log(Weight)')
             cb.draw_all()
-            
+
         ax.set_title(str(i))
         if zoom:
             ir = np.arange(i-nfade+1,i+1)
