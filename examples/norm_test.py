@@ -39,7 +39,7 @@ def eval_prop(indiv, do_true=False):
         return -np.inf
     weight = np.log(pdf).sum()
     return weight
-    
+
 def eval_fun(abc, pop, *args):
 
     res = Parallel(n_jobs=n_jobs)(delayed(eval_prop)(indiv, args[0])
@@ -118,9 +118,8 @@ pl.legend(['pda','true','rand'])
 pl.show()
 
 # show best fit
-print "Best fitting params:"
+print("Best fitting params:")
 best_ind = abc.weights[burnin:].argmax()
 indiv = [abc.particles[burnin:,:,i].ravel()[best_ind] for i in range(abc.particles.shape[-1])]
 for p,v in zip(abc.param_names,indiv):
-    print '%s: %f'%(p,v)
-    
+    print(('%s: %f'%(p,v)))

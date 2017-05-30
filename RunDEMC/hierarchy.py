@@ -11,8 +11,8 @@
 import sys
 import numpy as np
 
-from demc import Model, HyperPrior, FixedParams
-from io import make_dict, gzpickle
+from .demc import Model, HyperPrior, FixedParams
+from .io import make_dict, gzpickle
 
 # test for scoop
 try:
@@ -223,7 +223,7 @@ class Hierarchy(object):
             sys.stdout.write('Iterations (%d): ' % (num_iter))
 
             # loop over iterations
-            for i in xrange(num_iter):
+            for i in range(num_iter):
                 sys.stdout.write('%d' % (i+1))
                 sys.stdout.flush()
 

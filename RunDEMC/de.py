@@ -84,7 +84,7 @@ class DE(Proposal):
         base_inds = np.random.permutation(len(proposal))
 
         # loop generating proposals
-        for p in xrange(len(proposal)):
+        for p in range(len(proposal)):
             while np.any(np.isnan(proposal[p])):  # or \
                   #np.any([params[i].prior.pdf(proposal[p][i])==0.0
                   #        for i in non_fixed]):

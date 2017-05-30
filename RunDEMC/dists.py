@@ -52,8 +52,8 @@ _norm_cdf = scipy.stats.distributions._continuous_distns._norm_cdf
 _norm_sf = scipy.stats.distributions._continuous_distns._norm_sf
 _norm_isf = scipy.stats.distributions._continuous_distns._norm_isf
 _norm_ppf = scipy.stats.distributions._continuous_distns._norm_ppf
-log = scipy.stats.distributions._continuous_distns.log
 np = scipy.stats.distributions._continuous_distns.np
+log = np.log
 my_tn_gen = scipy.stats.distributions._continuous_distns.truncnorm_gen
 
 
@@ -111,7 +111,7 @@ def _pdf_fixed(self, x, *args, **kwds):
         Probability density function evaluated at x
     """
     args, loc, scale = self._parse_args(*args, **kwds)
-    x, loc, scale = map(np.asarray, (x, loc, scale))
+    x, loc, scale = list(map(np.asarray, (x, loc, scale)))
     args = tuple(map(np.asarray, args))
     x = np.asarray((x-loc)*1.0/scale)
     cond0 = self._argcheck(*args) & (scale > 0)
@@ -267,7 +267,7 @@ class Mixture(object):
                        for d in self._dist_list])
 
         # handle the weights
-        inds = np.array([np.random.choice(range(len(self._dist_list)),
+        inds = np.array([np.random.choice(list(range(len(self._dist_list))),
                                           size=rv.shape[2:],
                                           p=self._weights[i])
                          for i in range(len(self._weights))])

@@ -93,9 +93,8 @@ pl.plot(xData,yData,'xr',markersize=10)
 pl.show()
 
 # show best fit
-print "Best fitting params:"
+print("Best fitting params:")
 best_ind = abc.weights[burnin:].argmax()
 indiv = [abc.particles[burnin:,:,i].ravel()[best_ind] for i in range(abc.particles.shape[-1])]
 for p,v in zip(abc.param_names,indiv):
-    print '%s: %f'%(p,v)
-    
+    print(('%s: %f'%(p,v)))
