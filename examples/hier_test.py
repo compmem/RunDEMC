@@ -43,7 +43,7 @@ def eval_prop(indiv, subj_id):
         return -np.inf
     weight = np.log(pdf).sum()
     return weight
-    
+
 def eval_fun(abc, pop, *args):
 
     res = Parallel(n_jobs=n_jobs)(delayed(eval_prop)(indiv, args[0])
@@ -94,4 +94,3 @@ hier(burnin)
 for sm in hier.submodels:
     sm.set_proposal_gen(DE(gamma_best=0.0, rand_base=False))
 hier(iterations)
-

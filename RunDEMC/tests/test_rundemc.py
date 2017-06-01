@@ -13,5 +13,3 @@ from numpy.testing import *
 
 class test_RunDEMC(TestCase):
     pass
-
-

@@ -128,14 +128,14 @@ def joint_plot(particles,weights,burnin=50,names=None,legend=False,add_best=True
                 a.grid('on')
 
             # clean labels
-            if i > 0 or i < 0:
+            if i != 0:
                 for label in a.get_xticklabels():
                     label.set_visible(False)
             elif not rot is None:
                 for label in a.get_xticklabels():
                     label.set_rotation(rot)
                     #label.set_horizontalalignment('right')
-            if j < n_p-1 or j > n_p-1:
+            if j != n_p-1:
                 for label in a.get_yticklabels():
                     label.set_visible(False)
 

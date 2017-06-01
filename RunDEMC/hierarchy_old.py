@@ -31,7 +31,7 @@ class HyperParam(object):
                  mu=0.0, sigma=1.0, alpha=1.0, beta=1.0,
                  nchains=1):
         self.name = name
-            
+        
         if display_name is None:
             display_name = self.name
         self.display_name = display_name

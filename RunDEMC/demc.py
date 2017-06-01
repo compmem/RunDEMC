@@ -782,7 +782,7 @@ class FixedParams(Model):
                 # save these model likes for updating the model with those
                 # that were kept when we call _post_evolve
                 self._mprop_log_likes[m['model']] = mprop_log_likes
-                
+
         return log_like
 
     def _post_evolve(self, pop, kept):
@@ -791,15 +791,15 @@ class FixedParams(Model):
         # loop over the models
         for m in self._like_args:
             # update most recent particles
-            for i,j in m['param_ind']:            
+            for i,j in m['param_ind']:
                 m['model']._particles[-1][kept,i] = pop[kept,j]
-            
+
             # update most recent weights
             m['model']._weights[-1][kept] = self._mprop_log_likes[m['model']][kept]
             if m['model']._use_priors:
                 # add the prior
                 m['model']._weights[-1][kept] += self._mprop_log_prior[m['model']][kept]
-                
+
             # update most recent log_likes
             m['model']._log_likes[-1][kept] = self._mprop_log_likes[m['model']][kept]
 
@@ -807,7 +807,7 @@ class FixedParams(Model):
         pass
 
 
-    
+
 if __name__ == "__main__":
 
     pass

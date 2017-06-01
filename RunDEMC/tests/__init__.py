@@ -10,6 +10,3 @@
 """
 RunDEMC - Approximate Bayesian Computation with Differential Evolution
 """
-
-
-
