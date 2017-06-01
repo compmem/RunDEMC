@@ -113,13 +113,13 @@ class DE(Proposal):
                 # pick two more that are not p or best_ind
                 poss_ind = np.ones(len(proposal),dtype=np.bool)
                 poss_ind[to_avoid] = False
-                ind = random.sample(all_ind[poss_ind],2)
+                ind = random.sample(set(all_ind[poss_ind]),2)
 
                 # copy the fixed params (might be none)
                 proposal[p,fixed] = pop[p,fixed]
 
                 # DE_local_to_best (to not-fixed params)
-                proposal[p, ~fixed] = (pop[base_ind] + 
+                proposal[p, ~fixed] = (pop[base_ind] +
                                        (gamma *
                                        (pop[ind[0]] -
                                         pop[ind[1]])))[~fixed]
@@ -148,4 +148,3 @@ class Mutate(Proposal):
 
     def generate(self, pop, weights, params):
         pass
-
