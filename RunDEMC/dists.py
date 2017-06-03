@@ -71,8 +71,10 @@ def _argcheck_fixed(self, a, b):
             self._delta = self._nb - self._na
     else:
         self._delta = np.zeros_like(self._sa)
-        self._delta[self.a > 0] = -(self._sb[self.a > 0] - self._sa[self.a > 0])
-        self._delta[self.a <= 0] = self._nb[self.a <= 0] - self._na[self.a <= 0]
+        self._delta[self.a > 0] = - \
+            (self._sb[self.a > 0] - self._sa[self.a > 0])
+        self._delta[self.a <= 0] = self._nb[self.a <= 0] - \
+            self._na[self.a <= 0]
     self._logdelta = log(self._delta)
     return np.all((a - b) != 0.0)
 

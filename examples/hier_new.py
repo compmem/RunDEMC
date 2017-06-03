@@ -1,5 +1,5 @@
-#emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
-#ex: set sts=4 ts=4 sw=4 et:
+# emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
+# ex: set sts=4 ts=4 sw=4 et:
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ##
 #
 #   See the COPYING file distributed along with the RunDEMC package for the
@@ -28,19 +28,22 @@ from RunDEMC import Model, HyperPrior, Hierarchy, Param, dists
 # set up the hyper priors
 h_alpha = HyperPrior(name='h_alpha',
                      dist=dists.normal,
-                     params=[Param(name='mu', prior=dists.normal(1,.5)),
-                             Param(name='sigma', prior=dists.invgamma(4,10))])
+                     params=[Param(name='mu', prior=dists.normal(1, .5)),
+                             Param(name='sigma', prior=dists.invgamma(4, 10))])
 
 h_beta = HyperPrior(name='h_beta',
                     dist=dists.normal,
-                    params=[Param(name='mu', prior=dists.normal(1,.5)),
-                            Param(name='sigma', prior=dists.invgamma(4,10))])
+                    params=[Param(name='mu', prior=dists.normal(1, .5)),
+                            Param(name='sigma', prior=dists.invgamma(4, 10))])
 
 # set up lower level (i.e., subject)
-def subj_like(pop, *args):
-    return np.log(dists.beta(pop[:,0],pop[:,1]).pdf(args[0]))
 
-submods = [Model(name='subj_%s'%s,
+
+def subj_like(pop, *args):
+    return np.log(dists.beta(pop[:, 0], pop[:, 1]).pdf(args[0]))
+
+
+submods = [Model(name='subj_%s' % s,
                  params=[Param(name='alpha', prior=h_alpha),
                          Param(name='beta', prior=h_beta)],
                  like_fun=subj_like,

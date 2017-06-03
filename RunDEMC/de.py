@@ -1,5 +1,5 @@
-#emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
-#ex: set sts=4 ts=4 sw=4 et:
+# emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
+# ex: set sts=4 ts=4 sw=4 et:
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ##
 #
 #   See the COPYING file distributed along with the RunDEMC package for the
@@ -20,6 +20,7 @@ class Proposal(object):
     Generate a new proposal population based on the current population
     and their weights.
     """
+
     def generate(self, pop, weights, params=None):
         raise NotImplemented("You must define this method in a subclass.")
 
@@ -31,6 +32,7 @@ class DE(Proposal):
     """
     Differential evolution proposal.
     """
+
     def __init__(self, CR=1.0, gamma=(0.5, 1.0),
                  gamma_best=(0.0, 0.0), epsilon=.001,
                  rand_base=False):
@@ -53,11 +55,12 @@ class DE(Proposal):
         Generate a standard differential evolution proposal.
         """
         # allocate for new proposal
-        proposal = np.ones_like(pop)*np.nan
+        proposal = np.ones_like(pop) * np.nan
 
         # make sure weights not zero
         if hasattr(np, "float128"):
-            tweights = np.exp(np.float128(weights)) + .0000001  #np.finfo(weights.dtype).eps
+            # np.finfo(weights.dtype).eps
+            tweights = np.exp(np.float128(weights)) + .0000001
         else:
             tweights = np.exp(np.float64(weights)) + .0000001
 
@@ -66,7 +69,7 @@ class DE(Proposal):
 
         # get cumsum so we can sample probabilistically
         w_sum = tweights.sum()
-        p_w = tweights/w_sum
+        p_w = tweights / w_sum
         cum_w_sum = np.cumsum(p_w)
 
         # indices for all the particles
@@ -86,7 +89,7 @@ class DE(Proposal):
         # loop generating proposals
         for p in range(len(proposal)):
             while np.any(np.isnan(proposal[p])):  # or \
-                  #np.any([params[i].prior.pdf(proposal[p][i])==0.0
+                  # np.any([params[i].prior.pdf(proposal[p][i])==0.0
                   #        for i in non_fixed]):
                 # generate proposal
                 # get current gammas
@@ -111,27 +114,27 @@ class DE(Proposal):
                     base_ind = p
 
                 # pick two more that are not p or best_ind
-                poss_ind = np.ones(len(proposal),dtype=np.bool)
+                poss_ind = np.ones(len(proposal), dtype=np.bool)
                 poss_ind[to_avoid] = False
-                ind = random.sample(set(all_ind[poss_ind]),2)
+                ind = random.sample(set(all_ind[poss_ind]), 2)
 
                 # copy the fixed params (might be none)
-                proposal[p,fixed] = pop[p,fixed]
+                proposal[p, fixed] = pop[p, fixed]
 
                 # DE_local_to_best (to not-fixed params)
                 proposal[p, ~fixed] = (pop[base_ind] +
                                        (gamma *
-                                       (pop[ind[0]] -
-                                        pop[ind[1]])))[~fixed]
+                                        (pop[ind[0]] -
+                                         pop[ind[1]])))[~fixed]
                 if gamma_best > 0.0:
-                    proposal[p,~fixed] += (gamma_best*
-                                           (pop[best_ind] -
-                                            pop[base_ind]))[~fixed]
+                    proposal[p, ~fixed] += (gamma_best *
+                                            (pop[best_ind] -
+                                             pop[base_ind]))[~fixed]
 
                 # add in epsilon, but only to nonfixed
-                proposal[p,~fixed] += np.random.uniform(-self._epsilon,
-                                                        self._epsilon,
-                                                        size=(~fixed).sum())
+                proposal[p, ~fixed] += np.random.uniform(-self._epsilon,
+                                                         self._epsilon,
+                                                         size=(~fixed).sum())
 
         # do crossover
         xold_ind = np.random.rand(*pop.shape) > self._CR
@@ -143,6 +146,7 @@ class DE(Proposal):
 class Mutate(Proposal):
     """
     """
+
     def __init__(self, mutate_sd=.1):
         pass
 

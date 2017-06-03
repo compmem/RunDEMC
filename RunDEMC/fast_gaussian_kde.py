@@ -185,7 +185,8 @@ def fast_1d_kde(x, nx=200, extents=None, weights=None):
                                 shape=(nx, 1)).toarray()[:, 0]
 
     # Calculate the covariance matrix (in pixel coords)
-    cov = np.cov(np.atleast_2d(xi), rowvar=1, bias=False) + np.finfo(xi.dtype).eps
+    cov = np.cov(np.atleast_2d(xi), rowvar=1, bias=False) + \
+        np.finfo(xi.dtype).eps
 
     # Scaling factor for bandwidth
     scotts_factor = np.power(n, -1.0 / 5)  # For 1D (n**(-1/(d+4))
