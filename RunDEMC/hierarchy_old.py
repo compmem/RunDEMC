@@ -1,5 +1,5 @@
-#emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
-#ex: set sts=4 ts=4 sw=4 et:
+# emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
+# ex: set sts=4 ts=4 sw=4 et:
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ##
 #
 #   See the COPYING file distributed along with the RunDEMC package for the
@@ -8,7 +8,8 @@
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ##
 
 import numpy as np
-from dists import normal, invgamma
+from .dists import normal, invgamma
+
 
 class HyperParam(object):
     """Normal distribution used as a hyperparameter.
@@ -31,7 +32,7 @@ class HyperParam(object):
                  mu=0.0, sigma=1.0, alpha=1.0, beta=1.0,
                  nchains=1):
         self.name = name
-            
+
         if display_name is None:
             display_name = self.name
         self.display_name = display_name
@@ -46,8 +47,8 @@ class HyperParam(object):
         self._nchains = nchains
 
         # set initial values
-        self._mean = normal(mu,sigma).rvs(nchains)
-        self._std = np.sqrt(invgamma(alpha,beta).rvs(nchains))
+        self._mean = normal(mu, sigma).rvs(nchains)
+        self._std = np.sqrt(invgamma(alpha, beta).rvs(nchains))
 
     def pdf(self, x):
         x = np.atleast_1d(x)
@@ -58,15 +59,16 @@ class HyperParam(object):
         pdf = np.zeros(len(x))
         for i in range(len(x)):
             # wrap around as necessary (might only happen at initialization)
-            ind = i%self._nchains
+            ind = i % self._nchains
             pdf[i] = normal(self._mean[ind], self._std[ind]).pdf(x[i])
         return np.array(pdf)
 
     def rvs(self, shape):
         rvs = np.zeros(shape)
         for i in range(shape[0]):
-            ind = i%self._nchains
-            rvs[i] = normal(self._mean[ind], self._std[ind]).rvs([1]+list(shape[1:]))
+            ind = i % self._nchains
+            rvs[i] = normal(self._mean[ind], self._std[ind]
+                            ).rvs([1] + list(shape[1:]))
         return np.array(rvs)
 
     def update(self, posts):
@@ -81,7 +83,8 @@ class HyperParam(object):
         Update the current mean.
         """
         if len(posts) != self._nchains:
-            raise ValueError("You must update all %d chains simultaneously."%self._nchains)
+            raise ValueError(
+                "You must update all %d chains simultaneously." % self._nchains)
         for i in range(self._nchains):
             # update based on posterior
             # update.mu=function(x,use.core,use.sigma,prior){
@@ -96,15 +99,15 @@ class HyperParam(object):
             #     sigma.sq=use.sigma[x]^2
             sigma_sq = self._std[i]**2
             #     num=mu0/sigma.sq0 + sum(X)/sigma.sq
-            num = mu0/sigma_sq0 + X.sum()/sigma_sq
+            num = mu0 / sigma_sq0 + X.sum() / sigma_sq
             #     den=1/sigma.sq0 + n/sigma.sq
-            den = 1./sigma_sq0 + n/sigma_sq
+            den = 1. / sigma_sq0 + n / sigma_sq
             #     mean=num/den
-            mu = num/den
+            mu = num / den
             #     sigma=den^(-1/2)
-            sigma = den**(-1/2.)
+            sigma = den**(-1 / 2.)
             #     rnorm(1,mean,sigma)
-            self._mean[i] = normal(mu,sigma).rvs()
+            self._mean[i] = normal(mu, sigma).rvs()
 
         return self._mean
 
@@ -113,7 +116,8 @@ class HyperParam(object):
         Update the current std.
         """
         if len(posts) != self._nchains:
-            raise ValueError("You must update all %d chains simultaneously."%self._nchains)
+            raise ValueError(
+                "You must update all %d chains simultaneously." % self._nchains)
         for i in range(self._nchains):
             # update.sigma=function(x,use.core,use.mu,prior){
             #     require(MCMCpack)
@@ -128,11 +132,11 @@ class HyperParam(object):
             #     mu=use.mu[x]
             mu = self._mean[i]
             #     a=alpha+n/2
-            a = alpha+n/2.
+            a = alpha + n / 2.
             #     b=beta+sum((X-mu)**2)/2
-            b = beta + ((X-mu)**2).sum()/2.
+            b = beta + ((X - mu)**2).sum() / 2.
             #     sqrt(rinvgamma(1,a,b))
-            self._std[i] = np.sqrt(invgamma(a,b).rvs())
+            self._std[i] = np.sqrt(invgamma(a, b).rvs())
         return self._std
 
 
@@ -192,19 +196,20 @@ class Hierarchy(object):
         for i in range(len(self._params)):
             posts = []
             for sm in self._submodels:
-                ind = np.where(np.in1d(sm.param_names, [self._params[i].name]))[0]
+                ind = np.where(
+                    np.in1d(sm.param_names, [self._params[i].name]))[0]
                 if len(ind) > 0:
-                    posts.append(sm.particles[:,:,ind[0]].T)
+                    posts.append(sm.particles[:, :, ind[0]].T)
             posts = np.hstack(posts)
             self._params[i].update(posts)
 
     def __call__(self, num_iter):
         # loop over iterations
         if self._verbose:
-            sys.stdout.write('Iterations (%d): '%(num_iter))
+            sys.stdout.write('Iterations (%d): ' % (num_iter))
         for i in range(num_iter):
             if self._verbose:
-                sys.stdout.write('%d '%(i+1))
+                sys.stdout.write('%d ' % (i + 1))
                 sys.stdout.flush()
             # call each submodel for one iteration
             for sm in self._submodels:

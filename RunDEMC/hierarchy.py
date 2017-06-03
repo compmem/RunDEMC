@@ -1,5 +1,5 @@
-#emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
-#ex: set sts=4 ts=4 sw=4 et:
+# emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
+# ex: set sts=4 ts=4 sw=4 et:
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ##
 #
 #   See the COPYING file distributed along with the RunDEMC package for the
@@ -11,8 +11,8 @@
 import sys
 import numpy as np
 
-from demc import Model, HyperPrior, FixedParams
-from io import make_dict, gzpickle
+from .demc import Model, HyperPrior, FixedParams
+from .io import make_dict, gzpickle
 
 # test for scoop
 try:
@@ -43,6 +43,7 @@ def flatten(lis):
 class Hierarchy(object):
     """Collection of Model instances.
     """
+
     def __init__(self, models, num_chains=None, partition=None, parallel=None):
         """Figures out the HyperPriors and FixedParams from list of submodels.
         """
@@ -62,7 +63,7 @@ class Hierarchy(object):
 
     def _proc_params(self, params, level=0):
         # make sure to set level
-        if not len(self._fixed_params) == (level+1):
+        if not len(self._fixed_params) == (level + 1):
             self._fixed_params.append([])
             self._hyper_priors.append([])
 
@@ -85,7 +86,7 @@ class Hierarchy(object):
                 self._hyper_priors[level].append(p.prior)
 
                 # process this prior's params
-                self._proc_params(p.prior._params, level=level+1)
+                self._proc_params(p.prior._params, level=level + 1)
 
     def _process(self):
         """
@@ -105,7 +106,7 @@ class Hierarchy(object):
         sys.stdout.write('Processing params (%d): ' % len(self._models))
         sys.stdout.flush()
         for mi, m in enumerate(self._models):
-            sys.stdout.write('%d ' % (mi+1))
+            sys.stdout.write('%d ' % (mi + 1))
             sys.stdout.flush()
             # proc this model's params (recusively)
             self._proc_params(m._params, level=0)
@@ -197,7 +198,7 @@ class Hierarchy(object):
         sys.stdout.flush()
         # make sure to do other_models (fixed and hyper) first
         for mi, m in enumerate(self._other_models + self._models):
-            sys.stdout.write('%d ' % (mi+1))
+            sys.stdout.write('%d ' % (mi + 1))
             sys.stdout.flush()
             # see if must process, must be initialized all with same
             # num_chains
@@ -217,14 +218,14 @@ class Hierarchy(object):
             if not (scoop and scoop.IS_RUNNING) and self._parallel:
                 # do what <with> enter would do
                 #self._parallel._managed_pool = True
-                #self._parallel._initialize_pool()
+                # self._parallel._initialize_pool()
                 self._parallel.__enter__()
 
             sys.stdout.write('Iterations (%d): ' % (num_iter))
 
             # loop over iterations
-            for i in xrange(num_iter):
-                sys.stdout.write('%d' % (i+1))
+            for i in range(num_iter):
+                sys.stdout.write('%d' % (i + 1))
                 sys.stdout.flush()
 
                 # loop over each other model (fixed and hyper) doing Gibbs
@@ -290,6 +291,6 @@ class Hierarchy(object):
             # see if clean pools
             if not (scoop and scoop.IS_RUNNING) and self._parallel:
                 # do what <with> exit would do
-                #self._parallel._terminate_pool()
+                # self._parallel._terminate_pool()
                 #self._parallel._managed_pool = False
                 self._parallel.__exit__(None, None, None)

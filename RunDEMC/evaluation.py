@@ -1,5 +1,5 @@
-#emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
-#ex: set sts=4 ts=4 sw=4 et:
+# emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
+# ex: set sts=4 ts=4 sw=4 et:
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ##
 #
 #   See the COPYING file distributed along with the RunDEMC package for the
@@ -22,10 +22,10 @@ def calc_bpic(weights):
     }
     """
     loglike = weights
-    d_theta = -2*loglike
+    d_theta = -2 * loglike
     dbar = d_theta.mean()
     dhat = d_theta.min()
-    pd = dbar-dhat
-    dic= pd + dbar
-    ic = -2*loglike.mean() + 2*pd
-    return {'bpic':ic,'dic':dic,'dbar':dbar,'dhat':dhat,'pd':pd}
+    pd = dbar - dhat
+    dic = pd + dbar
+    ic = -2 * loglike.mean() + 2 * pd
+    return {'bpic': ic, 'dic': dic, 'dbar': dbar, 'dhat': dhat, 'pd': pd}

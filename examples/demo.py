@@ -1,5 +1,5 @@
-#emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
-#ex: set sts=4 ts=4 sw=4 et:
+# emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
+# ex: set sts=4 ts=4 sw=4 et:
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ##
 #
 #   See the COPYING file distributed along with the RunDEMC package for the
@@ -24,23 +24,24 @@ def eval_fun(pop, *args):
 
     # evaluate the population with some broadcasting
     pred = (pop[:, 0][:, np.newaxis] *
-            np.exp(pop[:, 1][:, np.newaxis]/args[0][np.newaxis, :]) +
+            np.exp(pop[:, 1][:, np.newaxis] / args[0][np.newaxis, :]) +
             pop[:, 2][:, np.newaxis])
     errors = pred - args[1][np.newaxis, :]
 
     # sum of squared error
     # errors = np.asarray(errors)
-    sse = np.sum(errors*errors, 1)
+    sse = np.sum(errors * errors, 1)
     # sae = np.sum(np.abs(errors),1)
 
     # calculate the weight with a normal kernel
-    weights = np.log(dists.normal(mean=0.0, std=pop[:,3]).pdf(sse))
+    weights = np.log(dists.normal(mean=0.0, std=pop[:, 3]).pdf(sse))
 
     # see if return both weights and predicted vals
     if save_posts:
         return weights, pred
     else:
         return weights
+
 
 # set up the data
 xData = np.array([5.357, 9.861, 5.457, 5.936, 6.161, 6.731])
@@ -58,8 +59,8 @@ params = [Param(name='a', prior=dists.uniform(-100, 100)),
 
 # set up abc
 abc = Model(name='fun', params=params,
-            like_fun=eval_fun, like_args = (xData,yData),
-             initial_zeros_ok=False,
+            like_fun=eval_fun, like_args=(xData, yData),
+            initial_zeros_ok=False,
             use_priors=True, verbose=True)
 
 # run for a burnin with the local_to_best
@@ -72,7 +73,7 @@ fixed_delta = abc.particles[-1, :, ind].mean()
 abc._particles[-1][:, ind] = fixed_delta
 abc._params[ind].prior = fixed_delta
 abc._weights[-1][:] = abc._log_likes[-1][:] + \
-                      abc.calc_log_prior(abc._particles[-1])
+    abc.calc_log_prior(abc._particles[-1])
 
 # run for more iterations to map posterior
 abc(1000, burnin=False)
@@ -95,9 +96,9 @@ pl.show()
 
 # show best fit
 burnin = 400
-print "Best fitting params:"
+print("Best fitting params:")
 best_ind = abc.weights[burnin:].argmax()
 indiv = [abc.particles[burnin:, :, i].ravel()[best_ind]
          for i in range(abc.particles.shape[-1])]
 for p, v in zip(abc.param_names, indiv):
-    print '%s: %f' % (p, v)
+    print('%s: %f' % (p, v))

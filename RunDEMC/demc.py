@@ -1,5 +1,5 @@
-#emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
-#ex: set sts=4 ts=4 sw=4 et:
+# emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
+# ex: set sts=4 ts=4 sw=4 et:
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ##
 #
 #   See the COPYING file distributed along with the RunDEMC package for the
@@ -29,13 +29,14 @@ except ImportError:
     joblib = None
 
 # local imports
-from de import DE
+from .de import DE
 
 
 class Param(object):
     """
     Parameter for use with RunDEMC.
     """
+
     def __init__(self, name, prior=None, init_prior=None,
                  display_name=None, transform=None):
         self.name = name
@@ -77,7 +78,8 @@ class Model(object):
                                    """)
 
     particles = property(lambda self:
-                         self.apply_param_transform(np.asarray(self._particles)),
+                         self.apply_param_transform(
+                             np.asarray(self._particles)),
                          doc="""
                          Particles as an array.
                          """)
@@ -128,7 +130,7 @@ class Model(object):
         self._name = name
         self._params = params  # can't be None
         if num_chains is None:
-            num_chains = int(np.min([len(params)*10, 100]))
+            num_chains = int(np.min([len(params) * 10, 100]))
         self._num_chains = num_chains
         self._initial_zeros_ok = initial_zeros_ok
         self._init_multiplier = init_multiplier
@@ -205,15 +207,15 @@ class Model(object):
                 partition = len(self._params)
             self._partition = partition
 
-        self._parts = np.array([1]*self._partition +
-                               [0]*(len(self._params)-self._partition),
+        self._parts = np.array([1] * self._partition +
+                               [0] * (len(self._params) - self._partition),
                                dtype=np.bool)
 
         # fill using init priors (for initialization)
-        init_parts = self._num_chains*self._init_multiplier
+        init_parts = self._num_chains * self._init_multiplier
         pop = np.hstack([p.init_prior.rvs((init_parts, 1))
                          if hasattr(p.init_prior, "rvs")
-                         else np.ones((init_parts, 1))*p.init_prior
+                         else np.ones((init_parts, 1)) * p.init_prior
                          for p in self._params])
         if pop.ndim < 2:
             pop = pop[:, np.newaxis]
@@ -232,11 +234,11 @@ class Model(object):
                 if self._verbose:
                     sys.stdout.write('%d(%d) ' %
                                      (ind.sum(),
-                                      self._num_chains-good_ind.sum()))
+                                      self._num_chains - good_ind.sum()))
                     sys.stdout.flush()
                 npop = np.hstack([p.init_prior.rvs((ind.sum(), 1))
                                   if hasattr(p.init_prior, "rvs")
-                                  else np.ones((ind.sum(), 1))*p.init_prior
+                                  else np.ones((ind.sum(), 1)) * p.init_prior
                                   for p in self._params])
                 if npop.ndim < 2:
                     npop = npop[:, np.newaxis]
@@ -266,12 +268,12 @@ class Model(object):
                 posts = posts[:self._num_chains]
 
         # append the initial log_likes and particles
-        self._times.append(time.time()-stime)
+        self._times.append(time.time() - stime)
         self._log_likes.append(log_likes)
         if self._use_priors:
             # calc log_priors
             log_priors = self.calc_log_prior(pop)
-            self._weights.append(log_likes+log_priors)
+            self._weights.append(log_likes + log_priors)
         else:
             self._weights.append(log_likes)
         self._particles.append(pop)
@@ -335,12 +337,13 @@ class Model(object):
     def _migrate(self):
         # pick which items will migrate
         num_to_migrate = np.random.random_integers(2, self._num_chains)
-        to_migrate = random.sample(range(self._num_chains), num_to_migrate)
+        to_migrate = random.sample(
+            list(range(self._num_chains)), num_to_migrate)
 
         # do a circle swap
         keepers = []
         for f_ind in range(len(to_migrate)):
-            if f_ind == len(to_migrate)-1:
+            if f_ind == len(to_migrate) - 1:
                 # loop to beg
                 t_ind = 0
             else:
@@ -361,7 +364,7 @@ class Model(object):
             mh_prob = np.exp(log_diff)
             if np.isnan(mh_prob):
                 mh_prob = 0.0
-            keep = (mh_prob-np.random.rand()) > 0.0
+            keep = (mh_prob - np.random.rand()) > 0.0
             if keep:
                 keepers.append({'ind': j,
                                 'particle': self._particles[-1][i],
@@ -398,7 +401,8 @@ class Model(object):
         # see if recalc prev_likes in case of HyperPrior
         if self._recalc_likes:
             if self._prev_log_likes is None:
-                prev_log_likes, prev_posts = self._calc_log_likes(self._particles[-1])
+                prev_log_likes, prev_posts = self._calc_log_likes(
+                    self._particles[-1])
             else:
                 prev_log_likes = self._prev_log_likes
                 prev_posts = self._prev_posts
@@ -426,13 +430,13 @@ class Model(object):
         # now exp so we can get the other probs
         mh_prob = np.exp(log_diff)
         mh_prob[np.isnan(mh_prob)] = 0.0
-        keep = (mh_prob-np.random.rand(len(mh_prob))) > 0.0
+        keep = (mh_prob - np.random.rand(len(mh_prob))) > 0.0
 
         # set the not keepers from previous population
         proposal[~keep] = self._particles[-1][~keep]
         prop_log_likes[~keep] = prev_log_likes[~keep]
         weights[~keep] = prev_weights[~keep]
-        #if self._use_priors:
+        # if self._use_priors:
         #    weights[~keep] += prev_log_prior[~keep]
         if prop_posts is not None:
             prop_posts[~keep] = self._posts[-1][~keep]
@@ -464,19 +468,19 @@ class Model(object):
         if self._verbose:
             sys.stdout.write('Iterations (%d): ' % (num_iter))
         times = []
-        for i in xrange(num_iter):
+        for i in range(num_iter):
             if np.random.rand() < migration_prob:
                 # migrate, which is deterministic and done in place
                 if self._verbose:
                     sys.stdout.write('x ')
                 self._migrate()
             if self._verbose:
-                sys.stdout.write('%d ' % (i+1))
+                sys.stdout.write('%d ' % (i + 1))
                 sys.stdout.flush()
             stime = time.time()
             # evolve the population to the next generation
             self._evolve(burnin=burnin)
-            times.append(time.time()-stime)
+            times.append(time.time() - stime)
         if self._verbose:
             sys.stdout.write('\n')
         self._times.extend(times)
@@ -509,6 +513,7 @@ class Model(object):
 class HyperPrior(Model):
     """Model that acts as a prior for lower-level models
     """
+
     def __init__(self, name, dist, params,
                  num_chains=None,
                  proposal_gen=None,
@@ -542,7 +547,7 @@ class HyperPrior(Model):
         # that use this model as a prior
         if len(args) == 0:
             # we are not likely
-            return -np.ones(len(pop))*np.inf
+            return -np.ones(len(pop)) * np.inf
 
         # default to not like
         log_like = np.zeros(len(pop))
@@ -560,8 +565,9 @@ class HyperPrior(Model):
         d = self._dist(*d_args)
         for m in args:
             if not hasattr(m['model'], '_particles'):
-                return -np.ones(len(pop))*np.inf
-            log_like += np.log(d.pdf(m['model']._particles[-1][:, m['param_ind']]))
+                return -np.ones(len(pop)) * np.inf
+            log_like += np.log(d.pdf(m['model']._particles[-1]
+                                     [:, m['param_ind']]))
 
         # for i,p in enumerate(pop):
         #     # set up the distribution
@@ -639,6 +645,7 @@ class FixedParams(Model):
     params = [Param('mu', prior=dists.normal(0,1)),
               sigma]
     """
+
     def __init__(self, name, params,
                  num_chains=None,
                  proposal_gen=None,
@@ -689,7 +696,7 @@ class FixedParams(Model):
         # that use this param
         if len(args) == 0:
             # we are not likely
-            return -np.ones(len(pop))*np.inf
+            return -np.ones(len(pop)) * np.inf
 
         # init like to zero
         log_like = np.zeros(len(pop))
@@ -703,7 +710,7 @@ class FixedParams(Model):
             #from IPython.core.debugger import Tracer ; Tracer()()
             # make sure the submodel has initialized
             if not hasattr(m['model'], '_particles'):
-                return -np.ones(len(pop))*np.inf
+                return -np.ones(len(pop)) * np.inf
 
             # get the current population and replace with this proposal
             mpop = m['model']._particles[-1].copy()
@@ -726,8 +733,9 @@ class FixedParams(Model):
                     if (scoop and scoop.IS_RUNNING):
                         # submit the like_fun call to scoop
                         margs = [m['model'].apply_param_transform(mpop)] + \
-                                 list(m['model']._like_args)
-                        res.append(futures.submit(m['model']._like_fun, *margs))
+                            list(m['model']._like_args)
+                        res.append(futures.submit(
+                            m['model']._like_fun, *margs))
                     else:
                         # submit to joblib
                         jobs.append(delayed(m['model']._like_fun)(m['model'].apply_param_transform(mpop),
@@ -737,7 +745,8 @@ class FixedParams(Model):
                     mods.append(m)
                 else:
                     # calc log likes in serial
-                    mprop_log_likes,mprop_posts = m['model']._calc_log_likes(mpop)
+                    mprop_log_likes, mprop_posts = m['model']._calc_log_likes(
+                        mpop)
 
                     # save these model likes for updating the model with those
                     # that were kept when we call _post_evolve
@@ -770,7 +779,7 @@ class FixedParams(Model):
 
                 if isinstance(out, tuple):
                     # split into likes and posts
-                    mprop_log_likes,mprop_posts = out
+                    mprop_log_likes, mprop_posts = out
                 else:
                     # just likes
                     mprop_log_likes = out
@@ -782,7 +791,7 @@ class FixedParams(Model):
                 # save these model likes for updating the model with those
                 # that were kept when we call _post_evolve
                 self._mprop_log_likes[m['model']] = mprop_log_likes
-                
+
         return log_like
 
     def _post_evolve(self, pop, kept):
@@ -791,15 +800,15 @@ class FixedParams(Model):
         # loop over the models
         for m in self._like_args:
             # update most recent particles
-            for i,j in m['param_ind']:            
-                m['model']._particles[-1][kept,i] = pop[kept,j]
-            
+            for i, j in m['param_ind']:
+                m['model']._particles[-1][kept, i] = pop[kept, j]
+
             # update most recent weights
             m['model']._weights[-1][kept] = self._mprop_log_likes[m['model']][kept]
             if m['model']._use_priors:
                 # add the prior
                 m['model']._weights[-1][kept] += self._mprop_log_prior[m['model']][kept]
-                
+
             # update most recent log_likes
             m['model']._log_likes[-1][kept] = self._mprop_log_likes[m['model']][kept]
 
@@ -807,7 +816,6 @@ class FixedParams(Model):
         pass
 
 
-    
 if __name__ == "__main__":
 
     pass
