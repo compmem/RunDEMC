@@ -14,6 +14,7 @@ import os
 import sys
 from scipy.stats import gaussian_kde, pearsonr
 
+
 from .density import fast_2d_kde, kdensity
 
 
