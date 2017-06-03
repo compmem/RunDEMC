@@ -165,7 +165,7 @@ def joint_plot(particles,weights,burnin=50,names=None,legend=False,add_best=True
     # now the bottom triangle
     for i in range(n_p):
         for j in range(0,i):
-                        # create the axis (start at top right)
+            # create the axis (start at top right)
             left = border + (j*width) + (j*sep)
             #bottom = 1 - (border + ((i+1)*height) + ((i+1)*sep))
             bottom = 1 - (border + (i*height) + (i*sep) + height)

@@ -117,7 +117,7 @@ def fast_2d_kde(x, y, gridsize=(200, 200), extents=None,
     kernel = np.dot(inv_cov, kernel) * kernel
     kernel = np.sum(kernel, axis=0) / 2.0
     kernel = np.exp(-kernel)
-    kernel = kernel.reshape((kern_ny, kern_nx))
+    kernel = kernel.reshape((int(kern_ny), int(kern_nx)))
 
     #---- Produce the kernel density estimate --------------------------------
 
