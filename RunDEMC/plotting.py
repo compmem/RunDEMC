@@ -12,14 +12,16 @@ import pylab as pl
 import numpy as np
 import os
 import sys
-from scipy.stats import gaussian_kde,pearsonr
-
+from scipy.stats import gaussian_kde, pearsonr
 from density import fast_2d_kde, kdensity
 
-def joint_plot(particles,weights,burnin=50,names=None,legend=False,add_best=True,
-               border=.1,sep=0.0,rot=None,fig=None,nxticks=5,nyticks=5,
-               take_log=False,grid=False,bold_sig=False,corr_size=(12,18),
-               do_scatter=False, num_contours=25, cmap=None):
+
+def joint_plot(particles, weights, burnin=50, names=None,
+               legend=False, add_best=True, border=.1,
+               sep=0.0, rot=None, fig=None, nxticks=5, nyticks=5,
+               take_log=False, grid=False, bold_sig=False,
+               corr_size=(12, 18), do_scatter=False,
+               num_contours=25, cmap=None):
     # get the fig
     if fig is None:
         fig = pl.gcf()
@@ -38,16 +40,16 @@ def joint_plot(particles,weights,burnin=50,names=None,legend=False,add_best=True
 
     # get best indiv
     best_ind = weights[burnin:].ravel().argmax()
-    indiv = [particles[burnin:,:,i].ravel()[best_ind]
+    indiv = [particles[burnin:, :, i].ravel()[best_ind]
              for i in range(particles.shape[-1])]
-    
+
     # set holder for axes
-    ax = np.zeros((n_p,n_p),dtype=np.object)
+    ax = np.zeros((n_p, n_p), dtype=np.object)
     for i in range(n_p):
-        for j in range(i+1,n_p):
+        for j in range(i+1, n_p):
             # create the axis (start at top right)
             left = border + (j*width) + (j*sep)
-            #bottom = 1 - (border + ((i+1)*height) + ((i+1)*sep))
+            # bottom = 1 - (border + ((i+1)*height) + ((i+1)*sep))
             bottom = 1 - (border + (i*height) + (i*sep) + height)
             sharex = sharey = None
             if i > 0:
