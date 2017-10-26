@@ -119,10 +119,7 @@ hmod = Hierarchy(smods)
 ###################
 
 # burnin
-hmod(50, burnin=True, migration_prob=.4)
-hmod(25, burnin=True, migration_prob=0.0)
-
-#1/0
+hmod(50, burnin=True)
 
 # sample posterior
 hmod(500)
@@ -132,13 +129,14 @@ hmod(500)
 # Some plots
 #################
 
-burnin = 200
+burnin = 200  # allow for relaxation after burnin
 
 lmod = smods[0]
 
 print("Best fitting params:")
 best_ind = lmod.weights[burnin:].argmax()
-indiv = [lmod.particles[burnin:,:,i].ravel()[best_ind] for i in range(lmod.particles.shape[-1])]
+indiv = [lmod.particles[burnin:,:,i].ravel()[best_ind]
+         for i in range(lmod.particles.shape[-1])]
 for p,v in zip(lmod.param_names,indiv):
     print('%s: %f'%(p,v))
 
