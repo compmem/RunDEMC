@@ -57,39 +57,39 @@ params = [Param(name='a', prior=dists.uniform(-100, 100)),
                 ),
           ]
 
-# set up abc
-abc = Model(name='fun', params=params,
+# set up mod
+mod = Model(name='fun', params=params,
             like_fun=eval_fun, like_args=(xData, yData),
             initial_zeros_ok=False,
             use_priors=True, verbose=True)
 
 # run for a burnin with the local_to_best
 burnin = 400
-abc(200, burnin=True)
+mod(200, burnin=True)
 
 # fix the delta error term based on the mean
-ind = abc.param_names.index('delta')
-fixed_delta = abc.particles[-1, :, ind].mean()
-abc._particles[-1][:, ind] = fixed_delta
-abc._params[ind].prior = fixed_delta
-abc._weights[-1][:] = abc._log_likes[-1][:] + \
-    abc.calc_log_prior(abc._particles[-1])
+ind = mod.param_names.index('delta')
+fixed_delta = mod.particles[-1, :, ind].mean()
+mod._particles[-1][:, ind] = fixed_delta
+mod._params[ind].prior = fixed_delta
+mod._weights[-1][:] = mod._log_likes[-1][:] + \
+    mod.calc_log_prior(mod._particles[-1])
 
 # run for more iterations to map posterior
-abc(1000, burnin=False)
+mod(1000, burnin=False)
 
 # joint plot
 pl.figure(1)
 pl.clf()
-ax = joint_plot(abc.particles[burnin:, :, :-1], abc.weights[burnin:],
+ax = joint_plot(mod.particles[burnin:, :, :-1], mod.weights[burnin:],
                 burnin=burnin,
-                names=abc.param_display_names[:-1],
+                names=mod.param_display_names[:-1],
                 rot=45, sep=.02)
 pl.show()
 
 # ppd plot
 pl.figure(2)
-violin_plot([d.ravel() for d in abc.posts[burnin:].T],
+violin_plot([d.ravel() for d in mod.posts[burnin:].T],
             positions=xData)
 pl.plot(xData, yData, 'xr', markersize=10)
 pl.show()
@@ -97,8 +97,8 @@ pl.show()
 # show best fit
 burnin = 400
 print("Best fitting params:")
-best_ind = abc.weights[burnin:].argmax()
-indiv = [abc.particles[burnin:, :, i].ravel()[best_ind]
-         for i in range(abc.particles.shape[-1])]
-for p, v in zip(abc.param_names, indiv):
+best_ind = mod.weights[burnin:].argmax()
+indiv = [mod.particles[burnin:, :, i].ravel()[best_ind]
+         for i in range(mod.particles.shape[-1])]
+for p, v in zip(mod.param_names, indiv):
     print('%s: %f' % (p, v))
