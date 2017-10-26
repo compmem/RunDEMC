@@ -356,7 +356,8 @@ class Model(object):
         self._weights[-1][keep] = self._weights[-1][keep] - \
                                   0.5*self._log_likes[-1][keep] + \
                                   0.5*pure_log_likes[keep]
-        self._log_likes[-1][keep] = pure_log_likes[keep]
+        self._log_likes[-1][keep] = 0.5*self._log_likes[-1][keep] + \
+                                    0.5*pure_log_likes[keep]
 
         # reset the purification
         self._next_purify += self._purify_every
