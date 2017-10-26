@@ -122,7 +122,8 @@ class Model(object):
                  use_priors=True,
                  verbose=False,
                  partition=None,
-                 parallel=None):
+                 parallel=None,
+                 purify_every=0):
         """
         DEMC
         """
@@ -142,6 +143,8 @@ class Model(object):
             partition = len(self._params)
         self._partition = partition
         self._parallel = parallel
+        self._purify_every = purify_every
+        self._next_purify = -1 + purify_every
 
         # set up proposal generator
         if proposal_gen is None:
@@ -174,6 +177,7 @@ class Model(object):
         self._prop_posts = None
         self._prev_log_likes = None
         self._prev_posts = None
+        self._pure_log_likes = None
 
         # we have not initialized
         self._initialized = False
@@ -334,6 +338,29 @@ class Model(object):
 
         return proposal
 
+    def _purify(self):
+        # we're going to purify, so just copy last state
+        proposal = self._particles[-1]
+
+        # eval the population (this is separate from the proposals so
+        # that we can parallelize the entire operation)
+        if self._pure_log_likes is None:
+            pure_log_likes, temp_posts = self._calc_log_likes(proposal)
+        else:
+            pure_log_likes = self._pure_log_likes
+            # prop_posts = self._prop_posts
+
+        # no MH step, just set the log_likes and weights
+        self._weights[-1] = self._weights[-1] - self._log_likes[-1] +\
+                            pure_log_likes
+        self._log_likes[-1] = pure_log_likes
+
+        # reset the purification
+        self._next_purify += self._purify_every
+
+        # clean up for next
+        self._pure_log_likes = None
+        
     def _migrate(self):
         # pick which items will migrate
         num_to_migrate = np.random.random_integers(2, self._num_chains)
@@ -474,6 +501,9 @@ class Model(object):
                 if self._verbose:
                     sys.stdout.write('x ')
                 self._migrate()
+            if self._next_purify == 0:
+                # it's time to purify the weights
+                self._purify()
             if self._verbose:
                 sys.stdout.write('%d ' % (i + 1))
                 sys.stdout.flush()

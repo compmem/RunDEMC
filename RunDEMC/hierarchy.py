@@ -240,7 +240,24 @@ class Hierarchy(object):
                     # prep each submodel in parallel
                     res = []
                     jobs = []
+                    pres = []
+                    pjobs = []
                     for m in self._models:
+                        # see if we're going to purify
+                        if m._next_purify == 0:
+                            # recalc the current likes
+                            # apply transformation if necessary
+                            pop = m.apply_param_transform(m._particles[-1])
+
+                            # submit the like_fun call in parallel
+                            if (scoop and scoop.IS_RUNNING):
+                                args = [pop] + list(m._like_args)
+                                pres.append(futures.submit(m._like_fun, *args))
+                            else:
+                                # do joblib parallel
+                                pjobs.append(delayed(m._like_fun)(pop,
+                                                                  *m._like_args))
+                            
                         # generate the proposals
                         m._proposal = m._crossover(burnin=burnin)
 
@@ -256,12 +273,41 @@ class Hierarchy(object):
                             jobs.append(delayed(m._like_fun)(pop,
                                                              *m._like_args))
 
+                    # submit joblib jobs if necessary
+                    # first for purification step
+                    if len(pjobs) > 0 and not (scoop and scoop.IS_RUNNING):
+                        # submit the joblib jobs
+                        pres = self._parallel(pjobs)
+                    # then for main evolution
                     if len(jobs) > 0 and not (scoop and scoop.IS_RUNNING):
                         # submit the joblib jobs
                         res = self._parallel(jobs)
 
                     # collect the results
+                    p = 0
                     for mi, m in enumerate(self._models):
+                        # see if purifying
+                        if m._next_purify == 0:
+                            # wait for the result
+                            if (scoop and scoop.IS_RUNNING):
+                                # pull results from scoop
+                                out = pres[p].result()
+                            else:
+                                # pull results from joblib
+                                out = res[p]
+                            if isinstance(out, tuple):
+                                # split into likes and posts
+                                log_likes, posts = out
+                            else:
+                                # just likes
+                                log_likes = out
+                                posts = None
+                            # set the log_likes for that model
+                            m._pure_log_likes = log_likes
+
+                            # increment the counter
+                            p += 1
+                            
                         # wait for the result
                         if (scoop and scoop.IS_RUNNING):
                             # pull results from scoop
