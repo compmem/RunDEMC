@@ -503,7 +503,12 @@ class Model(object):
                 self._migrate()
             if self._next_purify == 0:
                 # it's time to purify the weights
+                if self._verbose:
+                    sys.stdout.write('= ')
                 self._purify()
+            if self._purify_every > 0:
+                # subtract one
+                self._next_purify -= 1
             if self._verbose:
                 sys.stdout.write('%d ' % (i + 1))
                 sys.stdout.flush()
