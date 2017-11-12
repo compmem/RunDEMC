@@ -231,8 +231,11 @@ class Model(object):
                              for i in range(len(particles))]
             self._times = [m['times'][i]
                            for i in range(len(particles))]
-            self._posts = [m['posts'][i]
-                           for i in range(len(particles))]
+            if len(m['posts']) > 0:
+                self._posts = [m['posts'][i]
+                               for i in range(len(particles))]
+            else:
+                self._posts = []
             
         else:
             # we're generating ourselves
