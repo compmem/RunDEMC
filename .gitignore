@@ -10,4 +10,4 @@ build-arch*
 dist
 MANIFEST
 *.pickle
-
+*.egg-info

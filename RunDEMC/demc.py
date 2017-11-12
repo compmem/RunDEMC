@@ -30,7 +30,8 @@ except ImportError:
 
 # local imports
 from .de import DE
-
+from .io import load_results
+from .dists import invlogit, logit
 
 class Param(object):
     """
@@ -38,7 +39,7 @@ class Param(object):
     """
 
     def __init__(self, name, prior=None, init_prior=None,
-                 display_name=None, transform=None):
+                 display_name=None, transform=None, inv_transform=None):
         self.name = name
         self.prior = prior
 
@@ -51,6 +52,7 @@ class Param(object):
         self.display_name = display_name
 
         self.transform = transform
+        self.inv_transform = inv_transform
 
         # hidden variable to indicate whether this param is fixed at
         # this level
@@ -119,6 +121,7 @@ class Model(object):
                  burnin_proposal_gen=None,
                  initial_zeros_ok=False,
                  init_multiplier=1,
+                 init_file=None,
                  use_priors=True,
                  verbose=False,
                  partition=None,
@@ -135,6 +138,7 @@ class Model(object):
         self._num_chains = num_chains
         self._initial_zeros_ok = initial_zeros_ok
         self._init_multiplier = init_multiplier
+        self._init_file = init_file
         self._use_priors = use_priors
         self._verbose = verbose
         if partition is None:
@@ -194,16 +198,6 @@ class Model(object):
         # time it
         stime = time.time()
 
-        # initialize the particles and log_likes
-        self._num_params = len(self._params)
-        if num_chains is not None:
-            self._num_chains = num_chains
-        self._particles = []
-        self._log_likes = []
-        self._weights = []
-        self._times = []
-        self._posts = []
-
         # set the partition
         # see if we're modifying it
         if partition is not None:
@@ -215,84 +209,136 @@ class Model(object):
                                [0] * (len(self._params) - self._partition),
                                dtype=np.bool)
 
-        # fill using init priors (for initialization)
-        init_parts = self._num_chains * self._init_multiplier
-        pop = np.hstack([p.init_prior.rvs((init_parts, 1))
-                         if hasattr(p.init_prior, "rvs")
-                         else np.ones((init_parts, 1)) * p.init_prior
-                         for p in self._params])
-        if pop.ndim < 2:
-            pop = pop[:, np.newaxis]
+        # initialize starting point, see if from saved file
+        if self._init_file:
+            # we're loading from file
+            # load the file
+            m = load_results(self._init_file)
+            
+            # fill the variables
+            self._num_params = len(m['param_names'])
+            self._num_chains = m['particles'].shape[1]
 
-        # get the initial log_likes
-        if self._verbose:
-            sys.stdout.write('%d(%d) ' % (init_parts, self._num_chains))
-            sys.stdout.flush()
-        log_likes, posts = self._calc_log_likes(pop)
+            # pull the particles and apply inverse transform as needed
+            particles = self.apply_param_transform(m['particles'],
+                                                   inverse=True)
+            # must turn everything into lists
+            self._particles = [particles[i]
+                               for i in range(len(particles))]
+            self._log_likes = [m['log_likes'][i]
+                               for i in range(len(particles))]
+            self._weights = [m['weights'][i]
+                             for i in range(len(particles))]
+            self._times = [m['times'][i]
+                           for i in range(len(particles))]
+            self._posts = [m['posts'][i]
+                           for i in range(len(particles))]
+            
+        else:
+            # we're generating ourselves
+            # initialize the particles and log_likes
+            self._num_params = len(self._params)
+            if num_chains is not None:
+                self._num_chains = num_chains
+            self._particles = []
+            self._log_likes = []
+            self._weights = []
+            self._times = []
+            self._posts = []
 
-        # make sure not zero
-        if not self._initial_zeros_ok:
-            ind = np.isinf(log_likes) | np.isnan(log_likes)
-            good_ind = ~ind
-            while good_ind.sum() < self._num_chains:
-                if self._verbose:
-                    sys.stdout.write('%d(%d) ' %
-                                     (ind.sum(),
-                                      self._num_chains - good_ind.sum()))
-                    sys.stdout.flush()
-                npop = np.hstack([p.init_prior.rvs((ind.sum(), 1))
-                                  if hasattr(p.init_prior, "rvs")
-                                  else np.ones((ind.sum(), 1)) * p.init_prior
-                                  for p in self._params])
-                if npop.ndim < 2:
-                    npop = npop[:, np.newaxis]
-
-                pop[ind, :] = npop
-
-                # calc the log likes for those new pops
-                log_likes[ind], temp_posts = self._calc_log_likes(pop[ind])
-                if temp_posts is not None:
-                    posts[ind] = temp_posts
-                ind = np.isinf(log_likes) | np.isnan(log_likes)
-                good_ind = ~ind
-
-            # save the good pop
-            good_ind = ~ind
-            pop = pop[good_ind]
+            # fill using init priors (for initialization)
+            init_parts = self._num_chains * self._init_multiplier
+            pop = np.hstack([p.init_prior.rvs((init_parts, 1))
+                             if hasattr(p.init_prior, "rvs")
+                             else np.ones((init_parts, 1)) * p.init_prior
+                             for p in self._params])
             if pop.ndim < 2:
                 pop = pop[:, np.newaxis]
-            log_likes = log_likes[good_ind]
-            if posts is not None:
-                posts = posts[good_ind]
 
-        if len(pop) > self._num_chains:
-            pop = pop[:self._num_chains]
-            log_likes = log_likes[:self._num_chains]
-            if posts is not None:
-                posts = posts[:self._num_chains]
+            # get the initial log_likes
+            if self._verbose:
+                sys.stdout.write('%d(%d) ' % (init_parts, self._num_chains))
+                sys.stdout.flush()
+            log_likes, posts = self._calc_log_likes(pop)
 
-        # append the initial log_likes and particles
-        self._times.append(time.time() - stime)
-        self._log_likes.append(log_likes)
-        if self._use_priors:
-            # calc log_priors
-            log_priors = self.calc_log_prior(pop)
-            self._weights.append(log_likes + log_priors)
-        else:
-            self._weights.append(log_likes)
-        self._particles.append(pop)
-        if posts is not None:
-            self._posts.append(posts)
+            # make sure not zero
+            if not self._initial_zeros_ok:
+                ind = np.isinf(log_likes) | np.isnan(log_likes)
+                good_ind = ~ind
+                while good_ind.sum() < self._num_chains:
+                    if self._verbose:
+                        sys.stdout.write('%d(%d) ' %
+                                         (ind.sum(),
+                                          self._num_chains - good_ind.sum()))
+                        sys.stdout.flush()
+                    npop = np.hstack([p.init_prior.rvs((ind.sum(), 1))
+                                      if hasattr(p.init_prior, "rvs")
+                                      else np.ones((ind.sum(), 1)) * p.init_prior
+                                      for p in self._params])
+                    if npop.ndim < 2:
+                        npop = npop[:, np.newaxis]
+
+                    pop[ind, :] = npop
+
+                    # calc the log likes for those new pops
+                    log_likes[ind], temp_posts = self._calc_log_likes(pop[ind])
+                    if temp_posts is not None:
+                        posts[ind] = temp_posts
+                    ind = np.isinf(log_likes) | np.isnan(log_likes)
+                    good_ind = ~ind
+
+                # save the good pop
+                good_ind = ~ind
+                pop = pop[good_ind]
+                if pop.ndim < 2:
+                    pop = pop[:, np.newaxis]
+                log_likes = log_likes[good_ind]
+                if posts is not None:
+                    posts = posts[good_ind]
+
+            if len(pop) > self._num_chains:
+                pop = pop[:self._num_chains]
+                log_likes = log_likes[:self._num_chains]
+                if posts is not None:
+                    posts = posts[:self._num_chains]
+
+            # append the initial log_likes and particles
+            self._times.append(time.time() - stime)
+            self._log_likes.append(log_likes)
+            if self._use_priors:
+                # calc log_priors
+                log_priors = self.calc_log_prior(pop)
+                self._weights.append(log_likes + log_priors)
+            else:
+                self._weights.append(log_likes)
+            self._particles.append(pop)
+            if posts is not None:
+                self._posts.append(posts)
 
         # say we've initialized
         self._initialized = True
 
-    def apply_param_transform(self, pop):
+    def apply_param_transform(self, pop, inverse=False):
         if self._transform_needed:
             pop = pop.copy()
             for i, p in enumerate(self._params):
                 if p.transform:
-                    pop[..., i] = p.transform(pop[..., i])
+                    if not inverse:
+                        # just go in forward direction
+                        pop[..., i] = p.transform(pop[..., i])
+                    else:
+                        # going in inverse direction
+                        if p.inv_transform:
+                            invtrans = p.inv_transform
+                        else:
+                            # see if figure out
+                            if p.transform == invlogit:
+                                # we know we can do logit
+                                invtrans = logit
+                            else:
+                                raise ValueError("Could not infer inverse transform.")
+                        # apply the inverse transform
+                        pop[..., i] = invtrans(pop[..., i])
         return pop
 
     def _calc_log_likes(self, pop):
@@ -351,13 +397,12 @@ class Model(object):
             # prop_posts = self._prop_posts
 
         # no MH step, just set the log_likes and weights
-        # only keep non-inf and take mean
+        # only keep non-inf
         keep = ~np.isinf(pure_log_likes)
         self._weights[-1][keep] = self._weights[-1][keep] - \
-                                  0.5*self._log_likes[-1][keep] + \
-                                  0.5*pure_log_likes[keep]
-        self._log_likes[-1][keep] = 0.5*self._log_likes[-1][keep] + \
-                                    0.5*pure_log_likes[keep]
+                                  self._log_likes[-1][keep] + \
+                                  pure_log_likes[keep]
+        self._log_likes[-1][keep] = pure_log_likes[keep]
 
         # reset the purification
         self._next_purify += self._purify_every
