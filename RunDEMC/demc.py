@@ -110,6 +110,12 @@ class Model(object):
                      Posts as an array.
                      """)
 
+    accept_rate = property(lambda self:
+                           np.asarray(self._accept_rate),
+                           doc="""
+                           Acceptance rate as an array.
+                           """)
+
     default_prop_gen = DE(gamma_best=0.0, rand_base=False)
     default_burnin_prop_gen = DE(gamma_best=None, rand_base=True)
 
@@ -236,7 +242,12 @@ class Model(object):
                                for i in range(len(particles))]
             else:
                 self._posts = []
-            
+            if has_key(m, 'accept_rate'):
+                self._accept_rate = [m['accept_rate'][i]
+                                     for i in range(len(particles))]
+            else:
+                self._accept_rate = []
+                
         else:
             # we're generating ourselves
             # initialize the particles and log_likes
@@ -248,6 +259,7 @@ class Model(object):
             self._weights = []
             self._times = []
             self._posts = []
+            self._accept_rate = []
 
             # fill using init priors (for initialization)
             init_parts = self._num_chains * self._init_multiplier
@@ -264,16 +276,28 @@ class Model(object):
                 sys.stdout.flush()
             log_likes, posts = self._calc_log_likes(pop)
 
+            # keep track of total proposals
+            num_attempts = len(pop)
+                
             # make sure not zero
             if not self._initial_zeros_ok:
+                # get indices of bad and good likes
                 ind = np.isinf(log_likes) | np.isnan(log_likes)
                 good_ind = ~ind
+
+                # keep looping until we have enough non-zero
                 while good_ind.sum() < self._num_chains:
+                    # update attempt count
+                    num_attempts += ind.sum()
+
+                    # provide feedback as requested
                     if self._verbose:
                         sys.stdout.write('%d(%d) ' %
                                          (ind.sum(),
                                           self._num_chains - good_ind.sum()))
                         sys.stdout.flush()
+
+                    # generate the new pop
                     npop = np.hstack([p.init_prior.rvs((ind.sum(), 1))
                                       if hasattr(p.init_prior, "rvs")
                                       else np.ones((ind.sum(), 1)) * p.init_prior
@@ -287,6 +311,8 @@ class Model(object):
                     log_likes[ind], temp_posts = self._calc_log_likes(pop[ind])
                     if temp_posts is not None:
                         posts[ind] = temp_posts
+
+                    # update the number of good and bad ind
                     ind = np.isinf(log_likes) | np.isnan(log_likes)
                     good_ind = ~ind
 
@@ -298,6 +324,9 @@ class Model(object):
                 log_likes = log_likes[good_ind]
                 if posts is not None:
                     posts = posts[good_ind]
+
+            # calc the accept_rate
+            self._accept_rate.append(float(len(pop))/num_attempts)
 
             if len(pop) > self._num_chains:
                 pop = pop[:self._num_chains]
@@ -506,6 +535,7 @@ class Model(object):
 
         # handle much greater than one
         log_diff[log_diff > 0.0] = 0.0
+
         # now exp so we can get the other probs
         mh_prob = np.exp(log_diff)
         mh_prob[np.isnan(mh_prob)] = 0.0
@@ -526,6 +556,7 @@ class Model(object):
         self._weights.append(weights)
         if prop_posts is not None:
             self._posts.append(prop_posts)
+        self._accept_rate.append(float(keep.sum())/len(keep))
 
         # call post_evolve hook
         self._post_evolve(proposal, keep)
