@@ -72,6 +72,7 @@ ind = mod.param_names.index('delta')
 fixed_delta = mod.particles[-1, :, ind].mean()
 mod._particles[-1][:, ind] = fixed_delta
 mod._params[ind].prior = fixed_delta
+mod._log_likes[-1], temp_posts = mod._calc_log_likes(mod._particles[-1])
 mod._weights[-1][:] = mod._log_likes[-1][:] + \
     mod.calc_log_prior(mod._particles[-1])
 
@@ -81,7 +82,8 @@ mod(1000, burnin=False)
 # joint plot
 pl.figure(1)
 pl.clf()
-ax = joint_plot(mod.particles[burnin:, :, :-1], mod.weights[burnin:],
+ax = joint_plot(mod.particles[burnin:, :, :-1],
+                mod.weights[burnin:],
                 burnin=burnin,
                 names=mod.param_display_names[:-1],
                 rot=45, sep=.02)
