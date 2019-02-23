@@ -187,7 +187,7 @@ def noncentral_t(mean=0, std=1.0, df=1.0, nc=0.0):
     return dists.nct(df=df, nc=nc, loc=mean, scale=std)
 
 
-def halfcauchy(loc=0.0, scale=1.0):
+def halfcauchy(scale=1.0, loc=0.0):
     return dists.halfcauchy(loc=loc, scale=scale)
 
 
