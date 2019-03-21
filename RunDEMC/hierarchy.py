@@ -209,6 +209,10 @@ class Hierarchy(object):
         self._processed = True
 
     def __call__(self, num_iter=1, burnin=False, migration_prob=0.0):
+        self.sample(num_iter=num_iter, burnin=burnin,
+                    migration_prob=migration_prob)
+
+    def sample(self, num_iter=1, burnin=False, migration_prob=0.0):
         if not self._processed:
             self._process()
 
@@ -233,7 +237,7 @@ class Hierarchy(object):
                     sys.stdout.write('.')
                     sys.stdout.flush()
                     # run for one iteration
-                    m(1, burnin=burnin, migration_prob=migration_prob)
+                    m.sample(1, burnin=burnin, migration_prob=migration_prob)
 
                 # check if running scoop or joblib
                 if (scoop and scoop.IS_RUNNING) or self._parallel:
@@ -331,7 +335,7 @@ class Hierarchy(object):
                     sys.stdout.write('.')
                     sys.stdout.flush()
                     # run for one iteration
-                    m(1, burnin=burnin, migration_prob=migration_prob)
+                    m.sample(1, burnin=burnin, migration_prob=migration_prob)
 
         finally:
             # see if clean pools

@@ -571,6 +571,11 @@ class Model(object):
         pass
 
     def __call__(self, num_iter, burnin=False, migration_prob=0.0):
+        self.sample(num_iter, burnin=burnin, migration_prob=migration_prob)
+
+    def sample(self, num_iter, burnin=False, migration_prob=0.0):
+        """Sample model with DEMC for specified number of iterations."""
+    
         # make sure we've initialized
         self._initialize()
 
