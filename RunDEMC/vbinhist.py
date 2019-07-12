@@ -28,7 +28,12 @@ class VBinHist():
         self.b = None
         self.c = None
         
-    def calculate(self, min_area=0.0):
+     def calculate(self, min_area=0.0, lower=-np.inf, upper=np.inf, apply_bounds=True):
+        # remove data outside of the bounds if necessary
+        if apply_bounds:
+            self.x = self.x[self.x>lower]
+            self.x = self.x[self.x<upper]
+            
         # make sure not greater than 1.0
         if min_area > 1.0:
             min_area = 1.0
@@ -84,7 +89,45 @@ class VBinHist():
             else:
                 # done
                 break
-
+        # extend bins at the edges
+        if apply_bounds:
+            # find center of mass of the lowest bin
+            lowest_vals = self.x[(self.x>=self.b[0]) & (self.x<self.b[1])]
+            com_low = np.mean(lowest_vals)
+            
+            # save the old bin-width to correct h[0]
+            bwo_low = self.b[1] - self.b[0]
+            
+            # adjust left-most bin edge to consider the distance from the center of mass
+            # to the second left-most bin edge
+            self.b[0]  -= self.b[1] - com_low
+            bwn_low = self.b[1] - self.b[0]
+            
+            # clip lowest bin edge and adjust bin height if necessary
+            if self.b[0] < lower:
+                self.h[0] = self.h[0]*bwo_low/(self.b[1]-lower)
+                self.b[0] = lower
+            else:
+                self.h[0] = self.h[0]*bwo_low/bwn_low
+                
+            # find center of mass of the highest bin
+            highest_vals = self.x[(self.x<=self.b[-1]) & (self.x>self.b[-2])]
+            com_high = np.mean(highest_vals)
+            
+            # save the old bin-width to correct h[-1]
+            bwo_high = self.b[-1] - self.b[-2]
+            
+            # adjust right-most bin edge
+            self.b[-1] += com_high - self.b[-2]
+            bwn_high = self.b[-1] - self.b[-2]
+            
+            # clip highest bin edge and adjust bin height if necessary
+            if self.b[-1] > upper:
+                self.h[-1] = self.h[-1]*bwo_high/(upper-self.b[-2])
+                self.b[-1] = upper
+            else:
+                self.h[-1] = self.h[-1]*bwo_high/bwn_high
+                
         # we're done, so calc counts and return h and b
         self.c, b = np.histogram(self.x, bins=self.b)
         return self.h, self.b
