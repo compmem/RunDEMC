@@ -8,6 +8,7 @@
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ##
 
 import numpy as np
+import warnings
 
 class VBinHist():
     "Variable-Bin Histogram"
