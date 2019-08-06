@@ -154,11 +154,31 @@ class VBinHist():
         if len(poss_ind) == 0:
             # just return what we have
             return None
+        elif len(poss_ind) == 1:
+            # return the ind
+            return poss_ind[0]
+        else:
+            # choose a bin pair to split from the equal-area bin pairs
+            curr_low_sd = np.inf
+            for ind in poss_ind:
+                # get the vals
+                if ind+2 == len(self.b)-1:
+                    # we have to include the right-most edge
+                    vals = self.x[(self.x>=self.b[ind])&(self.x<=self.b[ind+2])]
+                else:
+                    # we can do what makes sense
+                    vals = self.x[(self.x>=self.b[ind])&(self.x<self.b[ind+2])]   
 
-        # pick one at random if there's more than one
-        ind = np.random.choice(poss_ind)
-
-        return ind
+                ind_sd = np.std(vals)
+                if ind_sd<curr_low_sd:
+                    # pick the bin pair with the smallest sd
+                    curr_max_area = ind_sd
+                    ind_chosen = ind
+                elif ind_sd==curr_low_sd:
+                    # throw a warning
+                    warnings.warn('Too few observations in bin pair')
+                    
+            return ind_chosen
 
     def split_bin_pair(self, ind, min_area=0.0):
         # get the vals
@@ -225,11 +245,31 @@ class VBinHist():
         if len(poss_ind) == 0:
             # just return what we have
             return None
-
-        # pick one at random if there's more than one
-        ind = np.random.choice(poss_ind)
-
-        return ind
+        elif len(poss_ind) == 1:
+            # return the ind
+            return poss_ind[0]
+        else:
+            # choose a bin to split from the equal-area bins
+            curr_low_sd = np.inf
+            for ind in poss_ind:
+                # get the vals
+                if ind+2 == len(self.b)-1:
+                    # we have to include the right-most edge
+                    vals = self.x[(self.x>=self.b[ind])&(self.x<=self.b[ind+2])]
+                else:
+                    # we can do what makes sense
+                    vals = self.x[(self.x>=self.b[ind])&(self.x<self.b[ind+2])]
+                    
+                ind_sd = np.std(vals)
+                if ind_sd<curr_low_sd:
+                    # pick the bin with the smallest sd
+                    curr_max_area = ind_sd
+                    ind_chosen = ind
+                elif ind_sd==curr_low_sd:
+                    # throw a warning
+                    warnings.warn('Too few observations in bin')
+                    
+            return ind_chosen
 
     def split_bin(self, ind, min_area=0.0):
         # get the vals
