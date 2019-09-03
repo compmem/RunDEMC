@@ -8,14 +8,26 @@
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ##
 
 import numpy as np
+import warnings
 
 class VBinHist():
     "Variable-Bin Histogram"
-    def __init__(self, x, min_width=None):
+    def __init__(self, x, min_width=None, lower=-np.inf, upper=np.inf,
+                 adjust_edges=True):
         """
         """
         # save input vars
         self.x = np.asarray(x)
+
+        # save upper and lower and
+        # remove data outside of the bounds if necessary
+        self._lower = lower
+        self._upper = upper
+        if ~np.isinf(lower) | ~np.isinf(upper):
+            self.x = self.x[(self.x >= lower) & (self.x <= upper)]
+
+        # save whether to adjust edges
+        self._adjust_edges = adjust_edges
         
         if min_width is None:
             # calc min width based on one bin per value if all lined up
@@ -85,6 +97,45 @@ class VBinHist():
                 # done
                 break
 
+        # extend bins at the edges
+        if self._adjust_edges:
+            # find center of mass of the lowest bin
+            lowest_vals = self.x[(self.x>=self.b[0]) & (self.x<self.b[1])]
+            com_low = np.mean(lowest_vals)
+            
+            # save the old bin-width to correct h[0]
+            bwo_low = self.b[1] - self.b[0]
+            
+            # adjust left-most bin edge to consider the distance from the center of mass
+            # to the second left-most bin edge
+            self.b[0] -= self.b[1] - com_low
+            bwn_low = self.b[1] - self.b[0]
+            
+            # clip lowest bin edge and adjust bin height if necessary
+            if self.b[0] < self._lower:
+                self.h[0] = self.h[0]*bwo_low/(self.b[1]-self._lower)
+                self.b[0] = self._lower
+            else:
+                self.h[0] = self.h[0]*bwo_low/bwn_low
+                
+            # find center of mass of the highest bin
+            highest_vals = self.x[(self.x<=self.b[-1]) & (self.x>self.b[-2])]
+            com_high = np.mean(highest_vals)
+            
+            # save the old bin-width to correct h[-1]
+            bwo_high = self.b[-1] - self.b[-2]
+            
+            # adjust right-most bin edge
+            self.b[-1] += com_high - self.b[-2]
+            bwn_high = self.b[-1] - self.b[-2]
+            
+            # clip highest bin edge and adjust bin height if necessary
+            if self.b[-1] > self._upper:
+                self.h[-1] = self.h[-1]*bwo_high/(self._upper-self.b[-2])
+                self.b[-1] = self._upper
+            else:
+                self.h[-1] = self.h[-1]*bwo_high/bwn_high
+                
         # we're done, so calc counts and return h and b
         self.c, b = np.histogram(self.x, bins=self.b)
         return self.h, self.b
@@ -111,11 +162,31 @@ class VBinHist():
         if len(poss_ind) == 0:
             # just return what we have
             return None
+        elif len(poss_ind) == 1:
+            # return the ind
+            return poss_ind[0]
+        else:
+            # choose a bin pair to split from the equal-area bin pairs
+            curr_low_sd = np.inf
+            for ind in poss_ind:
+                # get the vals
+                if ind+2 == len(self.b)-1:
+                    # we have to include the right-most edge
+                    vals = self.x[(self.x>=self.b[ind])&(self.x<=self.b[ind+2])]
+                else:
+                    # we can do what makes sense
+                    vals = self.x[(self.x>=self.b[ind])&(self.x<self.b[ind+2])]   
 
-        # pick one at random if there's more than one
-        ind = np.random.choice(poss_ind)
-
-        return ind
+                ind_sd = np.std(vals)
+                if ind_sd < curr_low_sd:
+                    # pick the bin pair with the smallest sd
+                    curr_max_area = ind_sd
+                    ind_chosen = ind
+                elif ind_sd == curr_low_sd:
+                    # throw a warning
+                    warnings.warn('Too few observations in bin pair')
+                    
+            return ind_chosen
 
     def split_bin_pair(self, ind, min_area=0.0):
         # get the vals
@@ -182,11 +253,31 @@ class VBinHist():
         if len(poss_ind) == 0:
             # just return what we have
             return None
-
-        # pick one at random if there's more than one
-        ind = np.random.choice(poss_ind)
-
-        return ind
+        elif len(poss_ind) == 1:
+            # return the ind
+            return poss_ind[0]
+        else:
+            # choose a bin to split from the equal-area bins
+            curr_low_sd = np.inf
+            for ind in poss_ind:
+                # get the vals
+                if ind+1 == len(self.b)-1:
+                    # we have to include the right-most edge
+                    vals = self.x[(self.x>=self.b[ind])&(self.x<=self.b[ind+1])]
+                else:
+                    # we can do what makes sense
+                    vals = self.x[(self.x>=self.b[ind])&(self.x<self.b[ind+1])]
+                    
+                ind_sd = np.std(vals)
+                if ind_sd < curr_low_sd:
+                    # pick the bin with the smallest sd
+                    curr_max_area = ind_sd
+                    ind_chosen = ind
+                elif ind_sd == curr_low_sd:
+                    # throw a warning
+                    warnings.warn('Too few observations in bin')
+                    
+            return ind_chosen
 
     def split_bin(self, ind, min_area=0.0):
         # get the vals

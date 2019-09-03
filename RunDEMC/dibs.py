@@ -1,3 +1,4 @@
+    
 # emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
 # ex: set sts=4 ts=4 sw=4 et:
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ##
@@ -16,12 +17,12 @@ from .vbinhist import VBinHist
 class DIBS():
     """Data-Driven Discretized Inverse Binomial Sampling"""
     def __init__(self, obs, cat_var=None, cont_var=None,
-                 min_width=None):
+                 min_width=None, lower=-np.inf, upper=np.inf,
+                 adjust_edges=True):
         # save the input vars
         self._obs = obs
         self._cat_var = cat_var
         self._cont_var = cont_var
-        self._min_width = min_width
         
         # get unique categories/conds
         if cat_var is not None:
@@ -37,7 +38,8 @@ class DIBS():
         # create vbin for each cat
         if cont_var is not None:
             self._vbh = {c: VBinHist(obs[obs[self._cat_var]==c][self._cont_var],
-                                         min_width=min_width)
+                                     min_width=min_width, lower=lower,
+                                     upper=upper, adjust_edges=adjust_edges)
                          for c in self._ucat}
         else:
             self._vbh = {c: None for c in self._ucat}
