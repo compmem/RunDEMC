@@ -12,8 +12,7 @@ import warnings
 
 class VBinHist():
     "Variable-Bin Histogram"
-    def __init__(self, x, min_width=None, lower=-np.inf, upper=np.inf,
-                 adjust_edges=True):
+    def __init__(self, x, lower=-np.inf, upper=np.inf, adjust_edges=True):
         """
         """
         # save input vars
@@ -29,17 +28,11 @@ class VBinHist():
         # save whether to adjust edges
         self._adjust_edges = adjust_edges
         
-        if min_width is None:
-            # calc min width based on one bin per value if all lined up
-            hw, bw = np.histogram(self.x, bins=len(self.x)*3)
-            min_width = (bw[1]-bw[0])
-        self.min_width = min_width
-
         # we haven't calculated, yet, so set values to none
         self.h = None
         self.b = None
         self.c = None
-        
+
     def calculate(self, min_area=0.0):
         # make sure not greater than 1.0
         if min_area > 1.0:
@@ -189,7 +182,33 @@ class VBinHist():
             return ind_chosen
 
     def split_bin_pair(self, ind, min_area=0.0):
-        # get the vals
+        # see how to calc vals for width calculation
+        left_edge = self.b[ind]
+        for i in range(ind-1, -1, -1):
+            left_edge = self.b[i]
+            if self.h[i] > 0:
+                break
+        right_edge_ind = ind+2
+        for i in range(ind+2, len(self.h), 1):
+            right_edge_ind = i+1
+            if self.h[i] > 0:
+                break
+        right_edge = self.b[right_edge_ind]
+
+        # get the vals for the width
+        if right_edge_ind == len(self.h):
+            # we have to include the right-most edge
+            width_vals = self.x[(self.x>=left_edge)&(self.x<=right_edge)]
+        else:
+            # we can use less than
+            width_vals = self.x[(self.x>=left_edge)&(self.x<right_edge)]
+            
+        # calc the hist for the widths
+        hw, bw = np.histogram(width_vals, bins=len(width_vals)*2 + 1,
+                              range=(left_edge, right_edge))
+        min_width = (bw[1]-bw[0])
+
+        # get the vals for the data
         if ind+2 == len(self.b)-1:
             # we have to include the right-most edge
             vals = self.x[(self.x>=self.b[ind])&(self.x<=self.b[ind+2])]
@@ -217,9 +236,33 @@ class VBinHist():
 
         # calc new area
         a2 = w1*h2
-        
-        # test to ensure all over min area
-        if np.any((a2<min_area)&(a2>0)) or np.any(w1<self.min_width):
+
+        # get the widths and heights of edge bins
+        if ind > 0:
+            # can get the left bin
+            wl = self.b[ind] - self.b[ind-1]
+            hl = self.h[ind-1]
+        else:
+            # no bin, so allow anything
+            wl = 0.0
+            hl = 0.0
+        if ind+3 < len(self.b):
+            # we can get the right bin
+            wr = self.b[ind+3] - self.b[ind+2]
+            hr = self.h[ind+2]
+        else:
+            # no bin, so allow anything
+            wr = 0.0
+            hr = 0.0
+
+        # bring it all together
+        new_w = np.concatenate([[wl], w1, [wr]])
+        new_h = np.concatenate([[hl], h2, [hr]])
+
+        # test to ensure all over min area and widths/heights are ok
+        if np.any((a2<min_area)&(a2>0)) or np.any(w1<min_width) or\
+           np.any((np.diff(np.sign(np.diff(new_w)))==2) &
+                  (np.diff(np.sign(np.diff(new_h)))==2)):
             # we're not splitting
             return False
 
@@ -280,6 +323,32 @@ class VBinHist():
             return ind_chosen
 
     def split_bin(self, ind, min_area=0.0):
+        # see how to calc vals for width calculation
+        left_edge = self.b[ind]
+        for i in range(ind-1, -1, -1):
+            left_edge = self.b[i]
+            if self.h[i] > 0:
+                break
+        right_edge_ind = ind+1
+        for i in range(ind+1, len(self.h), 1):
+            right_edge_ind = i+1
+            if self.h[i] > 0:
+                break
+        right_edge = self.b[right_edge_ind]
+        
+        # get the vals for the width
+        if right_edge_ind == len(self.h):
+            # we have to include the right-most edge
+            width_vals = self.x[(self.x>=left_edge)&(self.x<=right_edge)]
+        else:
+            # we can use less than
+            width_vals = self.x[(self.x>=left_edge)&(self.x<right_edge)]
+
+        # calc local min_width
+        hw, bw = np.histogram(width_vals, bins=len(width_vals)*2+1,
+                              range=(left_edge, right_edge))
+        min_width = (bw[1]-bw[0])
+            
         # get the vals
         if ind+1 == len(self.b)-1:
             # we have to include the right-most edge
@@ -287,7 +356,7 @@ class VBinHist():
         else:
             # we can do what makes sense
             vals = self.x[(self.x>=self.b[ind])&(self.x<self.b[ind+1])]
-            
+
         # calc new hist for that range with 2 bins
         h2, b2 = np.histogram(vals, bins=2, density=True)
 
@@ -309,8 +378,32 @@ class VBinHist():
         # calc new area
         a2 = w1*h2
         
+        # get the widths and heights of edge bins
+        if ind > 0:
+            # can get the left bin
+            wl = self.b[ind] - self.b[ind-1]
+            hl = self.h[ind-1]
+        else:
+            # no bin, so allow anything
+            wl = 0.0
+            hl = 0.0
+        if ind+2 < len(self.b):
+            # we can get the right bin
+            wr = self.b[ind+2] - self.b[ind+1]
+            hr = self.h[ind+1]
+        else:
+            # no bin, so allow anything
+            wr = 0.0
+            hr = 0.0
+
+        # bring it all together
+        new_w = np.concatenate([[wl], w1, [wr]])
+        new_h = np.concatenate([[hl], h2, [hr]])
+
         # test to ensure all over min area
-        if np.any((a2<min_area)&(a2>0)) or np.any(w1<self.min_width):
+        if np.any((a2<min_area)&(a2>0)) or np.any(w1<min_width) or\
+           np.any((np.diff(np.sign(np.diff(new_w)))==2) &
+                  (np.diff(np.sign(np.diff(new_h)))==2)):
             # we're not splitting
             return False
 
