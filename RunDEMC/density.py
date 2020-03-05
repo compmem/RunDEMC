@@ -564,7 +564,7 @@ def kdensity(x, extrema=None, kernel="gaussian",
              binwidth=None, nbins=512, weights=None,
              # bw="nrd0",
              adjust=1.0, cut=3, xx=None):
-    """
+    """Calculate kernel density via FFT.
     """
     # function (x, bw = "nrd0", adjust = 1, kernel = c("gaussian",
     #     "epanechnikov", "rectangular", "triangular", "biweight",
@@ -676,8 +676,8 @@ def kdensity(x, extrema=None, kernel="gaussian",
     #         stop("non-finite 'to'")
     #     lo <- from - 4 * bw
     #     up <- to + 4 * bw
-    lo = extrema[0] - 4 * bw
-    up = extrema[1] + 4 * bw
+    lo = np.squeeze(extrema[0] - 4 * bw)
+    up = np.squeeze(extrema[1] + 4 * bw)
     # print extrema,lo,up
     #     y <- .Call(C_BinDist, x, weights, lo, up, n) * totMass
     #y = np.histogram(x, nbins=nbins, weights=weights, range=(lo,up))*totMass
@@ -735,9 +735,12 @@ def kdensity(x, extrema=None, kernel="gaussian",
     else:
         raise ValueError("Unknown kernel type.")
 
+    # squeeze to ensure 1d
+    kords = np.squeeze(kords)
+    
     #     kords <- fft(fft(y) * Conj(fft(kords)), inverse = TRUE)
-    kords = np.fft.ifft(np.concatenate(
-        [np.fft.fft(y)] * 2) * np.conj(np.fft.fft(kords)))
+    kords = np.fft.ifft(np.concatenate([np.fft.fft(y)] * 2) *
+                        np.conj(np.fft.fft(kords)))
     #     kords <- pmax.int(0, Re(kords)[1L:n]/length(y))
     #kords = (np.real(kords)[:nbins]/float(len(y))).clip(0,np.inf)
     #kords = (np.real(kords)[::2]/float(len(y))).clip(0,np.inf)
