@@ -13,6 +13,7 @@ import pickle as pickle
 
 
 def make_dict(model, burnin=None, **kwargs):
+    """Generate a dict from a model instance."""
     return dict(name=model._name,
                 particles=model.particles,
                 param_names=model.param_names,
@@ -23,6 +24,17 @@ def make_dict(model, burnin=None, **kwargs):
                 posts=model.posts, burnin=burnin,
                 accept_rate=model.accept_rate,
                 **kwargs)
+
+
+def arviz_dict(model, burnin=0):
+    """Generate a dict that can be used to create an ArviZ data structure."""
+    return dict(posterior={model.param_names[i]: model.particles[burnin:,:,i].T 
+                           for i in range(len(model.param_names))}, 
+                sample_stats={'log_likelihood':model.weights[burnin:].T,
+                              'times': model.times[burnin:].T,
+                },
+                #log_likelihood=model.weights, 
+                prior={'log_prior':(model.weights-model.log_likes)[burnin:].T})
 
 
 def gzpickle(obj, filename):
