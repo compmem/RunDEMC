@@ -9,6 +9,8 @@
 
 
 def calc_bpic(weights):
+    """Calculate Bayesian Predictive Information Criterion (BPIC)"""
+
     """
     get.dic=function(weight){
     term1=apply(weight,c(1,2),sum)

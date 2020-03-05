@@ -44,6 +44,9 @@ class DIBS():
         else:
             self._vbh = {c: None for c in self._ucat}
 
+        # variable to save last counts for each bin
+        self.last_counts = None
+
     def update_bins(self, min_area=0.0, adjust=True):
         # update vbh for each cat
         for c in self._vbh:
@@ -55,9 +58,10 @@ class DIBS():
                     adj_min_area = min_area
                 self._vbh[c].calculate(min_area=adj_min_area)
 
-    def calc_like(self, sims):
+    def calc_log_like(self, sims):
         # start with zero like
-        p_like = 0.0
+        log_like = 0.0
+        self.last_counts = []
         
         # loop over observed categorical vars
         for cat in self._ucat:
@@ -98,7 +102,7 @@ class DIBS():
 
                 # if there are no matches, then we have zero like
                 if len(inds) == 0:
-                    p_like += -np.inf
+                    log_like += -np.inf
                     break
 
                 # pull the first k
@@ -118,8 +122,11 @@ class DIBS():
                 else:
                     sigma = 0.0
 
+                # save the last_counts
+                self.last_counts.append(len(ibs))
+
                 # combine corrected IBS value with count of total observations
-                p_like += (ibs.mean()-(sigma**2)/2)*c
+                log_like += (ibs.mean()-(sigma**2)/2)*c
 
         # return the log-like
-        return p_like
+        return log_like
