@@ -119,8 +119,7 @@ class Model(object):
     default_prop_gen = DE(gamma_best=0.0, rand_base=False)
     default_burnin_prop_gen = DE(gamma_best=None, rand_base=True)
 
-    def __init__(self, name, params,
-                 like_fun,
+    def __init__(self, name, params, like_fun,
                  like_args=None,
                  num_chains=None,
                  proposal_gen=None,
@@ -132,7 +131,8 @@ class Model(object):
                  verbose=False,
                  partition=None,
                  parallel=None,
-                 purify_every=0):
+                 purify_every=0,
+                 pop_recarray=True):
         """
         DEMC
         """
@@ -180,6 +180,9 @@ class Model(object):
             self._transform_needed = True
         else:
             self._transform_needed = False
+
+        # save the pop dtype
+        self._pop_recarray = pop_recarray
 
         # used for preprocessing
         self._proposal = None
@@ -376,6 +379,10 @@ class Model(object):
     def _calc_log_likes(self, pop):
         # apply transformation if necessary
         pop = self.apply_param_transform(pop)
+
+        # turn the pop into a rec array with names
+        if self._pop_recarray:
+            pop = np.rec.fromarrays(pop.T, names=self.param_names)
 
         # first get the log likelihood for the pop
         out = self._like_fun(pop, *(self._like_args))
@@ -622,7 +629,10 @@ class Model(object):
                 # to ensure using the same prior dist
                 p = np.hstack([props[j][:, i][:, np.newaxis]
                                for j in range(len(props))])
-                log_pdf = np.log(param.prior.pdf(p))
+
+                # ignore divide by zero in log here
+                with np.errstate(divide='ignore'):
+                    log_pdf = np.log(param.prior.pdf(p))
 
                 for j in range(len(props)):
                     log_priors[j] += log_pdf[:, j]
@@ -689,8 +699,9 @@ class HyperPrior(Model):
         for m in args:
             if not hasattr(m['model'], '_particles'):
                 return -np.ones(len(pop)) * np.inf
-            log_like += np.log(d.pdf(m['model']._particles[-1]
-                                     [:, m['param_ind']]))
+            # ignore divide by zero in log here
+            with np.errstate(divide='ignore'):
+                log_like += np.log(d.pdf(m['model']._particles[-1][:, m['param_ind']]))
 
         # for i,p in enumerate(pop):
         #     # set up the distribution
