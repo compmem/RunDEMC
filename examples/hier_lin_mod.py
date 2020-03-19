@@ -55,7 +55,7 @@ for i in range(nsubj):
 
 # define the evaluation function
 def subj_like(pop, *args):
-    alpha, beta, sigma = (pop[:, 0], pop[:, 1], pop[:, 2])
+    alpha, beta, sigma = (pop['alpha'], pop['beta'], pop['sigma'])
 
     xdata = args[0]['xdata']
     ydata = args[0]['ydata']
@@ -92,7 +92,6 @@ halpha = HyperPrior('alpha', dists.normal,
                                   prior=dists.uniform(-50, 50)),
                             Param(name='sig',
                                   prior=dists.invgamma(1, 1))])
-
 
 # set up the submodels for each participant
 smods = []

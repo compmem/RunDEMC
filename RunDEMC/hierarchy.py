@@ -14,13 +14,6 @@ import numpy as np
 from .demc import Model, HyperPrior, FixedParams
 from .io import make_dict, gzpickle
 
-# test for scoop
-try:
-    import scoop
-    from scoop import futures
-except ImportError:
-    scoop = None
-
 # test for joblib
 try:
     import joblib
@@ -29,12 +22,12 @@ except ImportError:
     joblib = None
 
 
-def flatten(lis):
+def _flatten(lis):
     """Given a list, possibly nested to any level, return it flattened."""
     new_lis = []
     for item in lis:
         if type(item) == type([]):
-            new_lis.extend(flatten(item))
+            new_lis.extend(_flatten(item))
         else:
             new_lis.append(item)
     return new_lis
@@ -44,10 +37,11 @@ class Hierarchy(object):
     """Collection of Model instances.
     """
 
-    def __init__(self, models, num_chains=None, partition=None, parallel=None):
+    def __init__(self, models, num_chains=None, partition=None,
+                 parallel=None, n_jobs=-1, backend=None):
         """Figures out the HyperPriors and FixedParams from list of submodels.
         """
-        self._models = flatten(models)
+        self._models = _flatten(models)
         self._other_models = []
         self._processed = False
         self._num_chains = num_chains
@@ -124,8 +118,8 @@ class Hierarchy(object):
                 fparams.append([])
 
         # flatten the hps
-        flattened_hps = flatten(self._hyper_priors)
-        sys.stdout.write('Linking models (%d): ' % (len(flatten(fparams)) +
+        flattened_hps = _flatten(self._hyper_priors)
+        sys.stdout.write('Linking models (%d): ' % (len(_flatten(fparams)) +
                                                     len(flattened_hps)))
         sys.stdout.flush()
 
@@ -219,7 +213,7 @@ class Hierarchy(object):
         # put in a try/finally to potentially clean up parallel
         try:
             # see if launch pools
-            if not (scoop and scoop.IS_RUNNING) and self._parallel:
+            if self._parallel:
                 # do what <with> enter would do
                 #self._parallel._managed_pool = True
                 # self._parallel._initialize_pool()
@@ -239,8 +233,8 @@ class Hierarchy(object):
                     # run for one iteration
                     m.sample(1, burnin=burnin, migration_prob=migration_prob)
 
-                # check if running scoop or joblib
-                if (scoop and scoop.IS_RUNNING) or self._parallel:
+                # check if running joblib
+                if self._parallel:
                     # prep each submodel in parallel
                     res = []
                     jobs = []
@@ -253,14 +247,13 @@ class Hierarchy(object):
                             # apply transformation if necessary
                             pop = m.apply_param_transform(m._particles[-1])
 
+                            if m._pop_recarray:
+                                pop = np.rec.fromarrays(pop.T, names=m.param_names)
+
                             # submit the like_fun call in parallel
-                            if (scoop and scoop.IS_RUNNING):
-                                args = [pop] + list(m._like_args)
-                                pres.append(futures.submit(m._like_fun, *args))
-                            else:
-                                # do joblib parallel
-                                pjobs.append(delayed(m._like_fun)(pop,
-                                                                  *m._like_args))
+                            # do joblib parallel
+                            pjobs.append(delayed(m._like_fun)(pop,
+                                                              *m._like_args))
                             
                         # generate the proposals
                         m._proposal = m._crossover(burnin=burnin)
@@ -268,22 +261,21 @@ class Hierarchy(object):
                         # apply transformation if necessary
                         pop = m.apply_param_transform(m._proposal)
 
+                        if m._pop_recarray:
+                            pop = np.rec.fromarrays(pop.T, names=m.param_names)
+                            
                         # submit the like_fun call in parallel
-                        if (scoop and scoop.IS_RUNNING):
-                            args = [pop] + list(m._like_args)
-                            res.append(futures.submit(m._like_fun, *args))
-                        else:
-                            # do joblib parallel
-                            jobs.append(delayed(m._like_fun)(pop,
-                                                             *m._like_args))
+                        # do joblib parallel
+                        jobs.append(delayed(m._like_fun)(pop,
+                                                         *m._like_args))
 
                     # submit joblib jobs if necessary
                     # first for purification step
-                    if len(pjobs) > 0 and not (scoop and scoop.IS_RUNNING):
+                    if len(pjobs) > 0:
                         # submit the joblib jobs
                         pres = self._parallel(pjobs)
                     # then for main evolution
-                    if len(jobs) > 0 and not (scoop and scoop.IS_RUNNING):
+                    if len(jobs) > 0:
                         # submit the joblib jobs
                         res = self._parallel(jobs)
 
@@ -292,13 +284,8 @@ class Hierarchy(object):
                     for mi, m in enumerate(self._models):
                         # see if purifying
                         if m._next_purify == 0:
-                            # wait for the result
-                            if (scoop and scoop.IS_RUNNING):
-                                # pull results from scoop
-                                out = pres[p].result()
-                            else:
-                                # pull results from joblib
-                                out = res[p]
+                            # pull results from joblib
+                            out = pres[p]
                             if isinstance(out, tuple):
                                 # split into likes and posts
                                 log_likes, posts = out
@@ -312,13 +299,8 @@ class Hierarchy(object):
                             # increment the counter
                             p += 1
                             
-                        # wait for the result
-                        if (scoop and scoop.IS_RUNNING):
-                            # pull results from scoop
-                            out = res[mi].result()
-                        else:
-                            # pull results from joblib
-                            out = res[mi]
+                        # pull results from joblib
+                        out = res[mi]
                         if isinstance(out, tuple):
                             # split into likes and posts
                             log_likes, posts = out
@@ -339,7 +321,7 @@ class Hierarchy(object):
 
         finally:
             # see if clean pools
-            if not (scoop and scoop.IS_RUNNING) and self._parallel:
+            if self._parallel:
                 # do what <with> exit would do
                 # self._parallel._terminate_pool()
                 #self._parallel._managed_pool = False

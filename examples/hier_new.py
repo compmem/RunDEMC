@@ -40,7 +40,7 @@ h_beta = HyperPrior(name='h_beta',
 
 
 def subj_like(pop, *args):
-    return np.log(dists.beta(pop[:, 0], pop[:, 1]).pdf(args[0]))
+    return np.log(dists.beta(pop['alpha'], pop['beta']).pdf(args[0]))
 
 
 submods = [Model(name='subj_%s' % s,

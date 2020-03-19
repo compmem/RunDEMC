@@ -14,17 +14,10 @@ import sys
 import random
 import time
 
-# test for scoop
-try:
-    import scoop
-    from scoop import futures
-except ImportError:
-    scoop = None
-
 # test for joblib
 try:
     import joblib
-    from joblib import delayed
+    from joblib import Parallel, delayed
 except ImportError:
     joblib = None
 
@@ -132,7 +125,9 @@ class Model(object):
                  partition=None,
                  parallel=None,
                  purify_every=0,
-                 pop_recarray=True):
+                 pop_recarray=True,
+                 pop_parallel=False,
+                 n_jobs=-1, backend=None):
         """
         DEMC
         """
@@ -181,8 +176,16 @@ class Model(object):
         else:
             self._transform_needed = False
 
-        # save the pop dtype
+        # should pop be passed as a recarray
         self._pop_recarray = pop_recarray
+
+        # pop should be processed in parallel
+        self._pop_parallel = pop_parallel
+
+        # make a parallel instance if required
+        if pop_parallel and self._parallel is None \
+           and joblib is not None:
+            self._parallel = Parallel(n_jobs=n_jobs, backend=backend)
 
         # used for preprocessing
         self._proposal = None
@@ -384,8 +387,23 @@ class Model(object):
         if self._pop_recarray:
             pop = np.rec.fromarrays(pop.T, names=self.param_names)
 
-        # first get the log likelihood for the pop
-        out = self._like_fun(pop, *(self._like_args))
+        if self._pop_parallel and self._parallel is not None:
+            if self._pop_recarray:
+                # must make indiv 1d rec array
+                out = self._parallel(delayed(self._like_fun)(np.atleast_1d(indiv),
+                                                             *(self._like_args))
+                                     for indiv in pop)
+            else:
+                # must make indiv 2d array
+                out = self._parallel(delayed(self._like_fun)(np.atleast_2d(indiv),
+                                                             *(self._like_args))
+                                     for indiv in pop)
+
+        else:
+            # just process in serial
+            out = self._like_fun(pop, *(self._like_args))
+
+        # process the results
         if isinstance(out, tuple):
             # split into likes and posts
             log_likes, posts = out
@@ -394,6 +412,14 @@ class Model(object):
             log_likes = out
             posts = None
 
+        # concatenate as needed
+        if isinstance(log_likes, list):
+            # concatenate it
+            log_likes = np.concatenate(log_likes)
+        if posts is not None and isinstance(posts, list):
+            # concatenate it
+            posts = np.concatenate(posts)
+            
         return log_likes, posts
 
     def _get_part_ind(self):
@@ -666,7 +692,8 @@ class HyperPrior(Model):
                                          burnin_proposal_gen=burnin_proposal_gen,
                                          initial_zeros_ok=True,
                                          use_priors=use_priors,
-                                         verbose=verbose)
+                                         verbose=verbose,
+                                         pop_recarray=False)
 
         # We need to recalc likes of prev iteration in case of hyperprior
         self._recalc_likes = True
@@ -813,7 +840,8 @@ class FixedParams(Model):
                        initial_zeros_ok=True,
                        use_priors=use_priors,
                        verbose=verbose,
-                       parallel=parallel)
+                       parallel=parallel,
+                       pop_recarray=False)
 
         # We need to recalc likes of prev iteration in case of FixedParams
         self._recalc_likes = True
@@ -853,7 +881,7 @@ class FixedParams(Model):
             for i, j in m['param_ind']:
                 mpop[:, i] = pop[:, j]
 
-            # see if we're just updated log_like for updated children
+            # see if we're just updating log_like for updated children
             if np.all((mpop - m['model']._particles[-1]) == 0.0):
                 # it's the same params, so just pull the likes
                 mprop_log_likes = m['model']._log_likes[-1]
@@ -863,17 +891,15 @@ class FixedParams(Model):
                 # calc the log-likes from all the models using these params
                 if not isinstance(m['model'], HyperPrior) and \
                    not isinstance(m['model'], FixedParams) and \
-                   ((scoop and scoop.IS_RUNNING) or self._parallel):
-                    if (scoop and scoop.IS_RUNNING):
-                        # submit the like_fun call to scoop
-                        margs = [m['model'].apply_param_transform(mpop)] + \
-                            list(m['model']._like_args)
-                        res.append(futures.submit(
-                            m['model']._like_fun, *margs))
-                    else:
-                        # submit to joblib
-                        jobs.append(delayed(m['model']._like_fun)(m['model'].apply_param_transform(mpop),
-                                                                  *m['model']._like_args))
+                   self._parallel:
+                    # submit to joblib
+                    mpopx = m['model'].apply_param_transform(mpop)
+                    if m['model']._pop_recarray:
+                        mpopx = np.rec.fromarrays(mpopx.T,
+                                                  names=m['model'].param_names)
+
+                    jobs.append(delayed(m['model']._like_fun)(mpopx,
+                                                              *m['model']._like_args))
 
                     # append to list of mods we're processing
                     mods.append(m)
@@ -896,8 +922,7 @@ class FixedParams(Model):
                 if m['model']._use_priors:
                     self._mprop_log_prior[m['model']] = mprop_log_prior
 
-        if len(jobs) > 0 and \
-           not (scoop and scoop.IS_RUNNING) and self._parallel:
+        if len(jobs) > 0 and self._parallel:
             # submit the joblib jobs
             res = self._parallel(jobs)
 
@@ -905,11 +930,8 @@ class FixedParams(Model):
             # collect the results
             for mi, m in enumerate(mods):
                 # wait for the result
-                if (scoop and scoop.IS_RUNNING):
-                    out = res[mi].result()
-                else:
-                    # pull results from joblib
-                    out = res[mi]
+                # pull results from joblib
+                out = res[mi]
 
                 if isinstance(out, tuple):
                     # split into likes and posts
