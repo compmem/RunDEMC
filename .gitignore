@@ -11,3 +11,4 @@ dist
 MANIFEST
 *.pickle
 *.egg-info
+dask-worker-space*
