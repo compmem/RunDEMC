@@ -102,7 +102,7 @@ def fast_2d_kde(x, y, gridsize=(200, 200), extents=None,
     #---- Make the gaussian kernel -------------------------------------------
 
     # First, determine how big the kernel needs to be
-    std_devs = np.diag(np.sqrt(cov))
+    std_devs = np.sqrt(np.diag(cov))
     kern_nx, kern_ny = np.round(scotts_factor * 2 * np.pi * std_devs)
 
     # Determine the bandwidth to use for the gaussian kernel

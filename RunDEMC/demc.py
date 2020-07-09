@@ -26,6 +26,7 @@ from .de import DE
 from .io import load_results
 from .dists import invlogit, logit
 
+
 class Param(object):
     """
     Parameter for use with RunDEMC.
@@ -226,7 +227,7 @@ class Model(object):
             # we're loading from file
             # load the file
             m = load_results(self._init_file)
-            
+
             # fill the variables
             self._num_params = len(m['param_names'])
             self._num_chains = m['particles'].shape[1]
@@ -253,7 +254,7 @@ class Model(object):
                                      for i in range(len(particles))]
             else:
                 self._accept_rate = []
-                
+
         else:
             # we're generating ourselves
             # initialize the particles and log_likes
@@ -284,7 +285,7 @@ class Model(object):
 
             # keep track of total proposals
             num_attempts = len(pop)
-                
+
             # make sure not zero
             if not self._initial_zeros_ok:
                 # get indices of bad and good likes
@@ -306,7 +307,7 @@ class Model(object):
                     # generate the new pop
                     npop = np.hstack([p.init_prior.rvs((ind.sum(), 1))
                                       if hasattr(p.init_prior, "rvs")
-                                      else np.ones((ind.sum(), 1)) * p.init_prior
+                                      else np.ones((ind.sum(), 1))*p.init_prior
                                       for p in self._params])
                     if npop.ndim < 2:
                         npop = npop[:, np.newaxis]
@@ -474,7 +475,7 @@ class Model(object):
 
         # clean up for next
         self._pure_log_likes = None
-        
+
     def _migrate(self):
         # pick which items will migrate
         num_to_migrate = np.random.random_integers(2, self._num_chains)
@@ -608,7 +609,7 @@ class Model(object):
 
     def sample(self, num_iter, burnin=False, migration_prob=0.0):
         """Sample model with DEMC for specified number of iterations."""
-    
+
         # make sure we've initialized
         self._initialize()
 
@@ -968,7 +969,7 @@ class FixedParams(Model):
             # update most recent log_likes
             m['model']._log_likes[-1][kept] = self._mprop_log_likes[m['model']][kept]
 
-        #from IPython.core.debugger import Tracer ; Tracer()()
+        # from IPython.core.debugger import Tracer ; Tracer()()
         pass
 
 

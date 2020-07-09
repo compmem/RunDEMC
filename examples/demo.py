@@ -23,9 +23,9 @@ def eval_fun(pop, *args):
     #     errors.append(predicted - args[1])
 
     # evaluate the population with some broadcasting
-    pred = (pop[:, 0][:, np.newaxis] *
-            np.exp(pop[:, 1][:, np.newaxis] / args[0][np.newaxis, :]) +
-            pop[:, 2][:, np.newaxis])
+    pred = (pop['a'][:, np.newaxis] *
+            np.exp(pop['b'][:, np.newaxis] / args[0][np.newaxis, :]) +
+            pop['c'][:, np.newaxis])
     errors = pred - args[1][np.newaxis, :]
 
     # sum of squared error
@@ -34,7 +34,7 @@ def eval_fun(pop, *args):
     # sae = np.sum(np.abs(errors),1)
 
     # calculate the weight with a normal kernel
-    weights = np.log(dists.normal(mean=0.0, std=pop[:, 3]).pdf(sse))
+    weights = np.log(dists.normal(mean=0.0, std=pop['delta']).pdf(sse))
 
     # see if return both weights and predicted vals
     if save_posts:
