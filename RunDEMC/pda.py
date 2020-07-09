@@ -17,13 +17,15 @@ class PDA():
     """Probability Density Approximation"""
     def __init__(self, obs, cat_var=None, cont_var=None,
                  lower=None, upper=None, nbins=2048, min_obs=3,
-                 transform=None, kernel='epa', bw='silverman'):
+                 transform=None, shift_start=0.0,
+                 kernel='epa', bw='silverman'):
         # save the input vars
         self._obs = obs
         self._min_obs = min_obs
         self._cat_var = cat_var
         self._cont_var = cont_var
         self._boxcox = transform
+        self._shift_start = shift_start
         self._lower = lower
         self._upper = upper
         self._nbins = nbins
@@ -43,7 +45,7 @@ class PDA():
                 # learn boxcox param over all data
                 self._lambdax, self._shift = best_boxcox_lambdax(obs[self._cont_var],
                                                                  lambdax=0.0,
-                                                                 shift=0.0)
+                                                                 shift=shift_start)
                 self._lower = boxcox(np.array([self._lower]),
                                      self._lambdax, self._shift)[0]
                 self._upper = boxcox(np.array([self._upper]),

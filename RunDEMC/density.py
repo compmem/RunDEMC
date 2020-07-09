@@ -605,6 +605,9 @@ def find_good_ind(dat, sd=3.0, verbose=True, max_iter=100, shift_start=0.0):
     shift_start : float or None
         Whether to apply the shift in the Box--Cox transform. Set to None
         for no shift or to some starting value for the function minimization.
+        NB: You should likely set this to None if you are culling based on
+        reaction times b/c the shift option can sometimes give rise to removing
+        trials on the front edge that should not be removed.
         Default = 0.0
         
     Returns
