@@ -41,9 +41,13 @@ class PDA():
 
             if self._boxcox:
                 # learn boxcox param over all data
-                self._lambdax = best_boxcox_lambdax(obs[self._cont_var])
-                self._lower = boxcox(np.array([self._lower]), self._lambdax)[0]
-                self._upper = boxcox(np.array([self._upper]), self._lambdax)[0]
+                self._lambdax, self._shift = best_boxcox_lambdax(obs[self._cont_var],
+                                                                 lambdax=0.0,
+                                                                 shift=0.0)
+                self._lower = boxcox(np.array([self._lower]),
+                                     self._lambdax, self._shift)[0]
+                self._upper = boxcox(np.array([self._upper]),
+                                     self._lambdax, self._shift)[0]
 
             # set the xvals for evaluating the kde
             self._xvals = np.linspace(self._lower, self._upper, self._nbins)
@@ -82,8 +86,8 @@ class PDA():
                 sdat = sims[self._cont_var][cat_ind]
                 odat = self._obs[self._cont_var][self._cat_ind[cat]]
                 if self._boxcox:
-                    sdat = boxcox(sdat, self._lambdax)
-                    odat = boxcox(odat, self._lambdax)
+                    sdat = boxcox(sdat, self._lambdax, self._shift)
+                    odat = boxcox(odat, self._lambdax, self._shift)
 
                 # calculate the density
                 pp = np.interp(odat, self._xvals,
