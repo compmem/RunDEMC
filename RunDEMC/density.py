@@ -575,7 +575,7 @@ def best_boxcox_lambdax(x, lambdax=0, shift=None, verbose=False):
     return best_lambdax
 
 
-def find_good_ind(dat, sd=3.0, verbose=True, max_iter=100):
+def find_good_ind(dat, sd=3.0, verbose=True, max_iter=100, shift_start=0.0):
     """Return good indices excluding outliers.
     
     Identifies outliers by ensuring normality with a Box--Cox transformation
@@ -602,6 +602,11 @@ def find_good_ind(dat, sd=3.0, verbose=True, max_iter=100):
         thresholding process.
         Default = 100
         
+    shift_start : float or None
+        Whether to apply the shift in the Box--Cox transform. Set to None
+        for no shift or to some starting value for the function minimization.
+        Default = 0.0
+        
     Returns
     -------
     ind : boolean index
@@ -615,7 +620,11 @@ def find_good_ind(dat, sd=3.0, verbose=True, max_iter=100):
     
     for i in range(max_iter):
         # convert data with BoxCox, making use of the shift
-        lambdax, shift = best_boxcox_lambdax(dat[ind], shift=0.0, verbose=True)
+        if shift_start is None:
+            shift = 0.0
+            lambdax = best_boxcox_lambdax(dat[ind], shift=shift_start, verbose=True)
+        else:
+            lambdax, shift = best_boxcox_lambdax(dat[ind], shift=shift_start, verbose=True)
         bcdat = boxcox(dat[ind], lambdax=lambdax, shift=shift)
 
         # determine mean and sdt
