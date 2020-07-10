@@ -556,7 +556,7 @@ def best_boxcox_lambdax(x, lambdax=0, shift=None, verbose=False,
         shift = np.max([shift, -x.min()+1.0e-5])
         def to_min(lambdax, *args):
             # return the neg so maximize log like
-            if min_shift is not None and lambda[1] < min_shift:
+            if min_shift is not None and lambdax[1] < min_shift:
                 # this value is not allowed
                 log_like = -np.inf
             else:
