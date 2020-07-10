@@ -142,6 +142,7 @@ class PDA():
             self._cat_ind = {None: np.ones(len(obs), dtype=np.bool)}
 
     def calc_log_like(self, sims):
+        """Calculate log likelihood based on simulations."""
         # start with zero like
         log_like = 0.0
 
