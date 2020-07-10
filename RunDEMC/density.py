@@ -544,17 +544,25 @@ def boxcox_loglike(x, lambdax, shift=0.0):
     return float(S2 + S1)
 
 
-def best_boxcox_lambdax(x, lambdax=0, shift=None, verbose=False):
+def best_boxcox_lambdax(x, lambdax=0, shift=None, verbose=False,
+                        min_shift=None):
 
     if shift is None:
         def to_min(lambdax, *args):
             # return the neg so maximize log like
             return -boxcox_loglike(x, lambdax)
     else:
+        # picking a starting shift
         shift = np.max([shift, -x.min()+1.0e-5])
         def to_min(lambdax, *args):
             # return the neg so maximize log like
-            return -boxcox_loglike(x, lambdax[0], shift=lambdax[1])
+            if min_shift is not None and lambda[1] < min_shift:
+                # this value is not allowed
+                log_like = -np.inf
+            else:
+                # calc the log like
+                log_like = boxcox_loglike(x, lambdax[0], shift=lambdax[1])
+            return -log_like
 
     # run the minimization
     if verbose:
