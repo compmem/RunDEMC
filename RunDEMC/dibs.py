@@ -31,9 +31,14 @@ class DIBS():
             # calculate proportions for each cat
             self._pcat = {c: (obs[self._cat_var]==c).sum()/len(obs)
                           for c in self._ucat}
+
+            # calculate counts for each cat
+            self._ccat = {c: (obs[self._cat_var]==c).sum()
+                          for c in self._ucat}
         else:
             self._ucat = [None]
             self._pcat = {None: 1.0}
+            self._ccat = {None: len(obs)}
 
         # create vbin for each cat
         if cont_var is not None:
@@ -76,18 +81,20 @@ class DIBS():
 
             # see if it exists
             if vbh is None:
-                counts = [None]
+                # use observed counts for cat
+                counts = [self._ccat[cat]]
             else:
+                # use the vbinhist for counts
                 counts = vbh.c
                 
             # loop over bins
             for i,c in enumerate(counts):
-                # if none, just process with existing cat_ind
-                if c is None:
-                    inds = np.where(cat_ind)[0]
-                elif c == 0:
+                if c == 0:
                     # if there are no obs in that bin, skip it
                     continue
+                elif vbh is None:
+                    # if none, just process with existing cat_ind
+                    inds = np.where(cat_ind)[0]
                 else:
                     # add in the matches based on bin
                     vals = sims[self._cont_var]
