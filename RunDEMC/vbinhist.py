@@ -94,40 +94,42 @@ class VBinHist():
         if self._adjust_edges:
             # find center of mass of the lowest bin
             lowest_vals = self.x[(self.x>=self.b[0]) & (self.x<self.b[1])]
-            com_low = np.mean(lowest_vals)
-            
-            # save the old bin-width to correct h[0]
-            bwo_low = self.b[1] - self.b[0]
-            
-            # adjust left-most bin edge to consider the distance from the center of mass
-            # to the second left-most bin edge
-            self.b[0] -= self.b[1] - com_low
-            bwn_low = self.b[1] - self.b[0]
-            
-            # clip lowest bin edge and adjust bin height if necessary
-            if self.b[0] < self._lower:
-                self.h[0] = self.h[0]*bwo_low/(self.b[1]-self._lower)
-                self.b[0] = self._lower
-            else:
-                self.h[0] = self.h[0]*bwo_low/bwn_low
+            if len(lowest_vals) > 0:
+                com_low = np.mean(lowest_vals)
+
+                # save the old bin-width to correct h[0]
+                bwo_low = self.b[1] - self.b[0]
+
+                # adjust left-most bin edge to consider the distance from the center of mass
+                # to the second left-most bin edge
+                self.b[0] -= self.b[1] - com_low
+                bwn_low = self.b[1] - self.b[0]
+
+                # clip lowest bin edge and adjust bin height if necessary
+                if self.b[0] < self._lower:
+                    self.h[0] = self.h[0]*bwo_low/(self.b[1]-self._lower)
+                    self.b[0] = self._lower
+                else:
+                    self.h[0] = self.h[0]*bwo_low/bwn_low
                 
             # find center of mass of the highest bin
             highest_vals = self.x[(self.x<=self.b[-1]) & (self.x>self.b[-2])]
-            com_high = np.mean(highest_vals)
-            
-            # save the old bin-width to correct h[-1]
-            bwo_high = self.b[-1] - self.b[-2]
-            
-            # adjust right-most bin edge
-            self.b[-1] += com_high - self.b[-2]
-            bwn_high = self.b[-1] - self.b[-2]
-            
-            # clip highest bin edge and adjust bin height if necessary
-            if self.b[-1] > self._upper:
-                self.h[-1] = self.h[-1]*bwo_high/(self._upper-self.b[-2])
-                self.b[-1] = self._upper
-            else:
-                self.h[-1] = self.h[-1]*bwo_high/bwn_high
+            if len(highest_vals) > 0:
+                com_high = np.mean(highest_vals)
+
+                # save the old bin-width to correct h[-1]
+                bwo_high = self.b[-1] - self.b[-2]
+
+                # adjust right-most bin edge
+                self.b[-1] += com_high - self.b[-2]
+                bwn_high = self.b[-1] - self.b[-2]
+
+                # clip highest bin edge and adjust bin height if necessary
+                if self.b[-1] > self._upper:
+                    self.h[-1] = self.h[-1]*bwo_high/(self._upper-self.b[-2])
+                    self.b[-1] = self._upper
+                else:
+                    self.h[-1] = self.h[-1]*bwo_high/bwn_high
                 
         # we're done, so calc counts and return h and b
         self.c, b = np.histogram(self.x, bins=self.b)
