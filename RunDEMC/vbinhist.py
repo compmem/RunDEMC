@@ -12,7 +12,7 @@ import warnings
 
 class VBinHist():
     "Variable-Bin Histogram"
-    def __init__(self, x, lower=-np.inf, upper=np.inf, adjust_edges=True
+    def __init__(self, x, lower=-np.inf, upper=np.inf, adjust_edges=True,
                  hist_range=None):
         """
         """
