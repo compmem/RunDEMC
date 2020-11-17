@@ -245,26 +245,16 @@ class VBinHist():
         a2 = w1*h2
 
         # get the widths and heights of edge bins
-        if ind > 0:
-            # can get the left bin
-            wl = self.b[ind] - self.b[ind-1]
-            hl = self.h[ind-1]
-        else:
-            # no bin, so allow anything
-            wl = 0.0
-            hl = 0.0
-        if ind+3 < len(self.b):
-            # we can get the right bin
-            wr = self.b[ind+3] - self.b[ind+2]
-            hr = self.h[ind+2]
-        else:
-            # no bin, so allow anything
-            wr = 0.0
-            hr = 0.0
-
-        # bring it all together
-        new_w = np.concatenate([[wl], w1, [wr]])
-        new_h = np.concatenate([[hl], h2, [hr]])
+        l_ind = max(0, ind-2)
+        r_ind = min(len(self.b)-1, ind+4)
+        wl = np.diff(self.b[l_ind:ind+1])
+        hl = self.h[l_ind:ind]
+        wr = np.diff(self.b[ind+2:r_ind+1])
+        hr = self.h[ind+2:r_ind]
+        
+        # bring it all together, padding with an extra zero
+        new_w = np.concatenate([[0.0], wl, w1, wr, [0.0]])
+        new_h = np.concatenate([[0.0], hl, h2, hr, [0.0]])
 
         # test to ensure all over min area and widths/heights are ok
         if np.any((a2<min_area)&(a2>0)) or np.any(w1<min_width) or\
@@ -386,26 +376,16 @@ class VBinHist():
         a2 = w1*h2
         
         # get the widths and heights of edge bins
-        if ind > 0:
-            # can get the left bin
-            wl = self.b[ind] - self.b[ind-1]
-            hl = self.h[ind-1]
-        else:
-            # no bin, so allow anything
-            wl = 0.0
-            hl = 0.0
-        if ind+2 < len(self.b):
-            # we can get the right bin
-            wr = self.b[ind+2] - self.b[ind+1]
-            hr = self.h[ind+1]
-        else:
-            # no bin, so allow anything
-            wr = 0.0
-            hr = 0.0
-
-        # bring it all together
-        new_w = np.concatenate([[wl], w1, [wr]])
-        new_h = np.concatenate([[hl], h2, [hr]])
+        l_ind = max(0, ind-2)
+        r_ind = min(len(self.b)-1, ind+3)
+        wl = np.diff(self.b[l_ind:ind+1])
+        hl = self.h[l_ind:ind]
+        wr = np.diff(self.b[ind+1:r_ind+1])
+        hr = self.h[ind+1:r_ind]
+        
+        # bring it all together, padding with an extra zero
+        new_w = np.concatenate([[0.0], wl, w1, wr, [0.0]])
+        new_h = np.concatenate([[0.0], hl, h2, hr, [0.0]])
 
         # test to ensure all over min area
         if np.any((a2<min_area)&(a2>0)) or np.any(w1<min_width) or\
