@@ -18,11 +18,14 @@ class DIBS():
     """Data-Driven Discretized Inverse Binomial Sampling"""
     def __init__(self, obs, cat_var=None, cont_var=None,
                  lower=-np.inf, upper=np.inf,
-                 adjust_edges=True):
+                 adjust_edges=True, range_by_cat=False):
         # save the input vars
         self._obs = obs
         self._cat_var = cat_var
         self._cont_var = cont_var
+
+        # see whether to pick cont range within cat or overall data
+        self._range_by_cat = range_by_cat
         
         # get unique categories/conds
         if cat_var is not None:
@@ -42,9 +45,18 @@ class DIBS():
 
         # create vbin for each cat
         if cont_var is not None:
+            if range_by_cat:
+                # just pass none so that each cat has a custom range
+                # based on the data
+                hist_range = None
+            else:
+                # determine range over entire dataset
+                hist_range = (obs[self._cont_var].min(),
+                              obs[self._cont_var].max())
             self._vbh = {c: VBinHist(obs[obs[self._cat_var]==c][self._cont_var],
                                      lower=lower, upper=upper,
-                                     adjust_edges=adjust_edges)
+                                     adjust_edges=adjust_edges,
+                                     hist_range=hist_range)
                          for c in self._ucat}
         else:
             self._vbh = {c: None for c in self._ucat}

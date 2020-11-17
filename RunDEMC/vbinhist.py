@@ -12,7 +12,8 @@ import warnings
 
 class VBinHist():
     "Variable-Bin Histogram"
-    def __init__(self, x, lower=-np.inf, upper=np.inf, adjust_edges=True):
+    def __init__(self, x, lower=-np.inf, upper=np.inf, adjust_edges=True
+                 hist_range=None):
         """
         """
         # save input vars
@@ -27,6 +28,9 @@ class VBinHist():
 
         # save whether to adjust edges
         self._adjust_edges = adjust_edges
+
+        # save the hist range
+        self._hist_range = hist_range
         
         # we haven't calculated, yet, so set values to none
         self.h = None
@@ -39,7 +43,8 @@ class VBinHist():
             min_area = 1.0
         
         # calc initial bins
-        self.h, self.b = np.histogram(self.x, bins=3, density=True)
+        self.h, self.b = np.histogram(self.x, bins=3, density=True,
+                                      range=self._hist_range)
         
         # calc width and area
         self.w = np.diff(self.b)
