@@ -98,11 +98,13 @@ class PDA():
         self._lower = lower
         self._upper = upper
         self._nbins = nbins
+        self._kernel = kernel
+        self._bw = bw
 
         # learn boxcox transformation if desired
         if cont_var is not None:
             # set up the kde
-            self._kde = FFTKDE(kernel=kernel, bw=bw)
+            #self._kde = FFTKDE(kernel=kernel, bw=bw)
 
             # set the lower and upper if needed
             if self._lower is None:
@@ -201,7 +203,8 @@ class PDA():
 
                     # calculate the probability density approx
                     pp = np.interp(odat, self._xvals,
-                                   self._kde.fit(sdat).evaluate(self._xvals))
+                                   FFTKDE(kernel=self._kernel,
+                                          bw=self._bw).fit(sdat).evaluate(self._xvals))
                     #pp, xx = kdensity(sdat,
                     #                  extrema=(0,2.0),
                     #                  xx=odat)
