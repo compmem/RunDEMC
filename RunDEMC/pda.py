@@ -9,8 +9,8 @@
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ##
 
 import numpy as np
-#from KDEpy import FFTKDE
-from .density import kdensity, boxcox, best_boxcox_lambdax
+from KDEpy import FFTKDE
+from .density import boxcox, best_boxcox_lambdax
 
 
 class PDA():
@@ -85,7 +85,7 @@ class PDA():
     def __init__(self, obs, cat_var=None, cont_var=None, cond_var=None,
                  lower=None, upper=None, nbins=2048, min_obs=3,
                  transform=None, shift_start=0.0, min_shift=None,
-                 kernel='epanechnikov', bw='silverman'):
+                 kernel='epa', bw='silverman'):
         # save the input vars
         self._obs = obs
         self._min_obs = min_obs
@@ -132,7 +132,7 @@ class PDA():
                                      self._lambdax, self._shift)[0]
 
             # set the xvals for evaluating the kde
-            #self._xvals = np.linspace(self._lower, self._upper, self._nbins)
+            self._xvals = np.linspace(self._lower, self._upper, self._nbins)
           
         # get unique categories
         if cat_var is not None:
@@ -202,14 +202,12 @@ class PDA():
                         odat = boxcox(odat, self._lambdax, self._shift)
 
                     # calculate the probability density approx
-                    #pp = np.interp(odat, self._xvals,
-                    #               FFTKDE(kernel=self._kernel,
-                    #                      bw=self._bw).fit(sdat).evaluate(self._xvals))
-                    
-                    pp, xx = kdensity(sdat, kernel=self._kernel,
-                                      nbins=self._nbins,
-                                      extrema=(self._lower, self._upper),
-                                      xx=odat)
+                    pp = np.interp(odat, self._xvals,
+                                   FFTKDE(kernel=self._kernel,
+                                          bw=self._bw).fit(sdat).evaluate(self._xvals))
+                    #pp, xx = kdensity(sdat,
+                    #                  extrema=(0,2.0),
+                    #                  xx=odat)
 
                     # scale the density by proportion
                     pp *= float(len(sdat))/nsims
