@@ -171,6 +171,12 @@ class PDA():
 
             # loop over observed categorical vars
             for cat in self._ucat:
+                # get the index for the observed data
+                o_cc_ind = self._cat_ind[cat] & o_cond_ind
+                if o_cc_ind.sum() == 0:
+                    # there are no observations of this cond and cat_ind
+                    continue
+
                 # set the starting index
                 if cat is not None:
                     cat_ind = sims[self._cat_var] == cat
@@ -185,12 +191,6 @@ class PDA():
                     # not enough obs for this cond&cat, so 0 like
                     log_like = -np.inf
                     break
-
-                # get the index for the observed data
-                o_cc_ind = self._cat_ind[cat] & o_cond_ind
-                if o_cc_ind.sum() == 0:
-                    # there are no observations of this cond and cat_ind
-                    continue
 
                 # process continuous var
                 if self._cont_var is not None:
