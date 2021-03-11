@@ -261,7 +261,7 @@ class Hierarchy(object):
                     # run for one iteration
                     #sys.stdout.write('.')
                     #sys.stdout.flush()
-                    if isinstance(m, HyperPrior) and burnin:
+                    if False: #isinstance(m, HyperPrior) and burnin:
                         # skip hyper during burnin
                         # set proposal to last values
                         #m._proposal = m._particles[-1]
@@ -284,7 +284,7 @@ class Hierarchy(object):
                         m.sample(1, burnin=burnin, migration_prob=migration_prob)
 
             # if was burnin, then go back and run Hypers
-            if burnin:
+            if False: #burnin:
                 if False: #reinit_hypers:
                     for m in self._other_models:
                         if isinstance(m, HyperPrior):
