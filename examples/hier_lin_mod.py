@@ -83,7 +83,7 @@ beta = Param(name='beta', display_name=r'$\beta$',
 # Fixed noise across subjects
 # Using a custom Jeffreys' prior
 sigma = Param(name='sigma', display_name=r'$\sigma$',
-              prior=dists.CustomDist(pdf=lambda x: np.exp(-np.log(x)),
+              prior=dists.CustomDist(pdf=lambda x: np.exp(-np.log(np.abs(x))),
                                      rvs=dists.dists.invgamma(1, 1).rvs))
 
 # Hyperprior over intercept using a normal distribution
