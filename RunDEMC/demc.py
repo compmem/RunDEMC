@@ -13,6 +13,7 @@ import numpy as np
 import sys
 import random
 import time
+from fastprogress.fastprogress import progress_bar
 
 # test for joblib
 try:
@@ -126,6 +127,7 @@ class Model(object):
                  partition=None,
                  parallel=None,
                  purify_every=0,
+                 rand_split=True,
                  pop_recarray=True,
                  pop_parallel=False,
                  n_jobs=-1, backend=None):
@@ -151,6 +153,7 @@ class Model(object):
         self._parallel = parallel
         self._purify_every = purify_every
         self._next_purify = -1 + purify_every
+        self._rand_split = rand_split
 
         # set up proposal generator
         if proposal_gen is None:
@@ -188,13 +191,8 @@ class Model(object):
            and joblib is not None:
             self._parallel = Parallel(n_jobs=n_jobs, backend=backend)
 
-        # used for preprocessing
-        self._proposal = None
-        self._prop_log_likes = None
-        self._prop_posts = None
-        self._prev_log_likes = None
-        self._prev_posts = None
-        self._pure_log_likes = None
+        # set up the cur_split to None
+        self._cur_split = None
 
         # we have not initialized
         self._initialized = False
@@ -433,20 +431,36 @@ class Model(object):
         # return the pre-rolled value
         return parts
 
-    def _crossover(self, burnin=False):
+    def _get_split_ind(self):
+        # set all ind
+        num_particles = len(self.particles[-1])
+        
+        if self._rand_split:
+            # randomize the indices
+            all_ind = np.random.permutation(num_particles)
+        else:
+            all_ind = np.arange(num_particles)
+
+        # split in half
+        split_ind = np.zeros(num_particles, dtype=np.bool)
+        split_ind[all_ind[:int(num_particles/2)]] = True
+                  
+        return split_ind
+
+    def _crossover(self, pop_ind, ref_pop_ind, parts_ind, burnin=False):
         if burnin:
             prop_gen = self._burnin_prop_gen
         else:
             prop_gen = self._prop_gen
 
         # always pass params, though no longer using priors
-        proposal = prop_gen(self._particles[-1],
-                            self._weights[-1],
+        proposal = prop_gen(self._particles[-1][pop_ind],
+                            self._particles[-1][ref_pop_ind],
+                            self._weights[-1][pop_ind],
                             self._params)
 
-        # apply the partition by copying prev values back
-        parts = self._get_part_ind()
-        proposal[:, ~parts] = self._particles[-1][:, ~parts]
+        # apply the parts ind
+        proposal[:, ~parts_ind] = self._particles[-1][pop_ind][:, ~parts_ind]
 
         return proposal
 
@@ -524,85 +538,82 @@ class Model(object):
         pass
 
     def _evolve(self, burnin=False):
-        # first generate new proposals
-        # loop over groups, making new proposal pops via mutation
-        # or crossover
-        if self._proposal is None:
-            proposal = self._crossover(burnin=burnin)
-        else:
-            proposal = self._proposal
+        # grab the parts ind for this evolution
+        parts_ind = self._get_part_ind()
 
-        # eval the population (this is separate from the proposals so
-        # that we can parallelize the entire operation)
-        if self._prop_log_likes is None:
+        # get the split
+        split_ind = self._get_split_ind()
+
+        # copy the prev state
+        self._particles.append(self._particles[-1].copy())
+        self._log_likes.append(self._log_likes[-1].copy())
+        self._weights.append(self._weights[-1].copy())
+        if len(self._posts) > 0:
+            self._posts.append(self._posts[-1].copy())
+        
+        # loop over two halves
+        kept = np.zeros(len(self._particles[-1]), dtype=np.bool)
+        for cur_split in [split_ind, ~split_ind]:
+            # make the cur split avail
+            self._cur_split = cur_split
+            
+            # generate new proposals
+            proposal = self._crossover(cur_split, ~cur_split,
+                                       parts_ind, burnin=burnin)
+
+            # eval the proposal
             prop_log_likes, prop_posts = self._calc_log_likes(proposal)
-        else:
-            prop_log_likes = self._prop_log_likes
-            prop_posts = self._prop_posts
 
-        # see if recalc prev_likes in case of HyperPrior
-        if self._recalc_likes:
-            if self._prev_log_likes is None:
+            # see if recalc previous likes (for HyperPrior)
+            if self._recalc_likes:
                 prev_log_likes, prev_posts = self._calc_log_likes(
-                    self._particles[-1])
+                    self._particles[-1][cur_split])
             else:
-                prev_log_likes = self._prev_log_likes
-                prev_posts = self._prev_posts
-        else:
-            prev_log_likes = self._log_likes[-1]
+                prev_log_likes = self._log_likes[-1][cur_split]
 
-        # decide whether to keep the new proposal or not
-        # keep with a MH step
-        log_diff = np.float64(prop_log_likes - prev_log_likes)
+            # decide whether to keep the new proposal or not
+            # keep with a MH step
+            log_diff = np.float64(prop_log_likes - prev_log_likes)
 
-        # next see if we need to include priors for each param
-        if self._use_priors:
-            prop_log_prior, prev_log_prior = self.calc_log_prior(proposal,
-                                                                 self._particles[-1])
-            weights = prop_log_likes + prop_log_prior
-            log_diff += np.float64(prop_log_prior - prev_log_prior)
+            # next see if we need to include priors for each param
+            if self._use_priors:
+                prop_log_prior, prev_log_prior = self.calc_log_prior(
+                    proposal,
+                    self._particles[-1][cur_split])
+                weights = prop_log_likes + prop_log_prior
+                log_diff += np.float64(prop_log_prior - prev_log_prior)
 
-            prev_weights = prev_log_likes + prev_log_prior
-        else:
-            weights = prop_log_likes
-            prev_weights = prev_log_likes
+                prev_weights = prev_log_likes + prev_log_prior
+            else:
+                weights = prop_log_likes
+                prev_weights = prev_log_likes
 
-        # handle much greater than one
-        log_diff[log_diff > 0.0] = 0.0
+            # handle much greater than one
+            log_diff[log_diff > 0.0] = 0.0
 
-        # now exp so we can get the other probs
-        mh_prob = np.exp(log_diff)
-        mh_prob[np.isnan(mh_prob)] = 0.0
-        keep = (mh_prob - np.random.rand(len(mh_prob))) > 0.0
+            # now exp so we can get the other probs
+            mh_prob = np.exp(log_diff)
+            mh_prob[np.isnan(mh_prob)] = 0.0
+            keep = (mh_prob - np.random.rand(len(mh_prob))) > 0.0
 
-        # set the not keepers from previous population
-        proposal[~keep] = self._particles[-1][~keep]
-        prop_log_likes[~keep] = prev_log_likes[~keep]
-        weights[~keep] = prev_weights[~keep]
-        # if self._use_priors:
-        #    weights[~keep] += prev_log_prior[~keep]
-        if prop_posts is not None:
-            prop_posts[~keep] = self._posts[-1][~keep]
+            # modify the relevant particles
+            # use mask the mask approach
+            split_keep_ind = cur_split.copy()
+            split_keep_ind[split_keep_ind] = keep
+            self._particles[-1][split_keep_ind] = proposal[keep]
+            self._log_likes[-1][split_keep_ind] = prop_log_likes[keep]
+            self._weights[-1][split_keep_ind] = weights[keep]
+            if prop_posts is not None:
+                self._posts[-1][split_keep_ind] = prop_posts[keep]
 
-        # append the new proposal
-        self._particles.append(proposal)
-        self._log_likes.append(prop_log_likes)
-        self._weights.append(weights)
-        if prop_posts is not None:
-            self._posts.append(prop_posts)
-        self._accept_rate.append(float(keep.sum())/len(keep))
+            # call post_evolve hook
+            self._post_evolve(self._particles[-1][cur_split], keep)
 
-        # call post_evolve hook
-        self._post_evolve(proposal, keep)
+            # save the kept info
+            kept[cur_split] = keep
 
-        # clean up for next
-        self._proposal = None
-        self._prop_log_likes = None
-        self._prop_posts = None
-        self._prev_log_likes = None
-        self._prev_posts = None
-
-        pass
+        # save the acceptance rate
+        self._accept_rate.append(float(kept.sum())/len(kept))
 
     def __call__(self, num_iter, burnin=False, migration_prob=0.0):
         self.sample(num_iter, burnin=burnin, migration_prob=migration_prob)
@@ -614,32 +625,35 @@ class Model(object):
         self._initialize()
 
         # loop over iterations
-        if self._verbose:
-            sys.stdout.write('Iterations (%d): ' % (num_iter))
         times = []
-        for i in range(num_iter):
+        if self._verbose:
+            sys.stdout.write('Iterations (%d):\n' % (num_iter))
+            progress = progress_bar(range(num_iter))
+        else:
+            progress = range(num_iter)
+        for i in progress:
             if np.random.rand() < migration_prob:
                 # migrate, which is deterministic and done in place
-                if self._verbose:
-                    sys.stdout.write('x ')
+                # if self._verbose:
+                #     sys.stdout.write('x ')
                 self._migrate()
             if self._next_purify == 0:
                 # it's time to purify the weights
-                if self._verbose:
-                    sys.stdout.write('= ')
+                # if self._verbose:
+                #     sys.stdout.write('= ')
                 self._purify()
             if self._purify_every > 0:
                 # subtract one
                 self._next_purify -= 1
-            if self._verbose:
-                sys.stdout.write('%d ' % (i + 1))
-                sys.stdout.flush()
+            # if self._verbose:
+            #     sys.stdout.write('%d ' % (i + 1))
+            #     sys.stdout.flush()
             stime = time.time()
             # evolve the population to the next generation
             self._evolve(burnin=burnin)
             times.append(time.time() - stime)
-        if self._verbose:
-            sys.stdout.write('\n')
+        # if self._verbose:
+        #     sys.stdout.write('\n')
         self._times.extend(times)
         return times
 
@@ -659,7 +673,11 @@ class Model(object):
 
                 # ignore divide by zero in log here
                 with np.errstate(divide='ignore'):
-                    log_pdf = np.log(param.prior.pdf(p))
+                    if isinstance(param.prior, HyperPrior):
+                        # must provide cur_split
+                        log_pdf = np.log(param.prior.pdf(p, self._cur_split))
+                    else:
+                        log_pdf = np.log(param.prior.pdf(p))
 
                 for j in range(len(props)):
                     log_priors[j] += log_pdf[:, j]
@@ -729,7 +747,8 @@ class HyperPrior(Model):
                 return -np.ones(len(pop)) * np.inf
             # ignore divide by zero in log here
             with np.errstate(divide='ignore'):
-                log_like += np.log(d.pdf(m['model']._particles[-1][:, m['param_ind']]))
+                log_like += np.log(d.pdf(m['model']._particles[-1][self._cur_split,
+                                                                   m['param_ind']]))
 
         # for i,p in enumerate(pop):
         #     # set up the distribution
@@ -753,19 +772,21 @@ class HyperPrior(Model):
 
         return log_like
 
-    def pdf(self, vals):
+    def pdf(self, vals, cur_split):
         # self._dist can't be None
         # pick from chains
         vals = np.atleast_1d(vals)
-        if len(vals) == self._num_chains:
-            # have them match
-            chains = np.arange(self._num_chains)
-        else:
-            # pick randomly
-            chains = np.random.randint(0, self._num_chains, len(vals))
+
+        if cur_split is None:            
+            if len(vals) == self._num_chains:
+                # have them match
+                cur_split = np.arange(self._num_chains)
+            else:
+                # pick randomly
+                cur_split = np.random.randint(0, self._num_chains, len(vals))
 
         # generate the pdf using the likelihood func
-        pop = self._particles[-1][chains]
+        pop = self._particles[-1][cur_split]
         args = [pop[:, i] for i in range(pop.shape[1])]
         d = self._dist(*args)
         # p = np.hstack([d.pdf(vals[:,i]) for i in range(vals.shape[1])])
@@ -876,16 +897,16 @@ class FixedParams(Model):
                 return -np.ones(len(pop)) * np.inf
 
             # get the current population and replace with this proposal
-            mpop = m['model']._particles[-1].copy()
+            mpop = m['model']._particles[-1].copy()[self._cur_split]
 
             # set all the fixed params
             for i, j in m['param_ind']:
                 mpop[:, i] = pop[:, j]
 
             # see if we're just updating log_like for updated children
-            if np.all((mpop - m['model']._particles[-1]) == 0.0):
+            if np.all((mpop - m['model']._particles[-1][self._cur_split]) == 0.0):
                 # it's the same params, so just pull the likes
-                mprop_log_likes = m['model']._log_likes[-1]
+                mprop_log_likes = m['model']._log_likes[-1][self._cur_split]
                 log_like += mprop_log_likes
                 self._mprop_log_likes[m['model']] = mprop_log_likes
             else:
@@ -906,8 +927,7 @@ class FixedParams(Model):
                     mods.append(m)
                 else:
                     # calc log likes in serial
-                    mprop_log_likes, mprop_posts = m['model']._calc_log_likes(
-                        mpop)
+                    mprop_log_likes, mprop_posts = m['model']._calc_log_likes(mpop)
 
                     # save these model likes for updating the model with those
                     # that were kept when we call _post_evolve
@@ -955,19 +975,21 @@ class FixedParams(Model):
         # for any particle we keep, go back through the submodels and
         # update their params and likelihoods for the most recent pop
         # loop over the models
+        split_kept_ind = self._cur_split.copy()
+        split_kept_ind[split_kept_ind] = kept
         for m in self._like_args:
             # update most recent particles
             for i, j in m['param_ind']:
-                m['model']._particles[-1][kept, i] = pop[kept, j]
+                m['model']._particles[-1][split_kept_ind, i] = pop[kept, j]
 
             # update most recent weights
-            m['model']._weights[-1][kept] = self._mprop_log_likes[m['model']][kept]
+            m['model']._weights[-1][split_kept_ind] = self._mprop_log_likes[m['model']][kept]
             if m['model']._use_priors:
                 # add the prior
-                m['model']._weights[-1][kept] += self._mprop_log_prior[m['model']][kept]
+                m['model']._weights[-1][split_kept_ind] += self._mprop_log_prior[m['model']][kept]
 
             # update most recent log_likes
-            m['model']._log_likes[-1][kept] = self._mprop_log_likes[m['model']][kept]
+            m['model']._log_likes[-1][split_kept_ind] = self._mprop_log_likes[m['model']][kept]
 
         # from IPython.core.debugger import Tracer ; Tracer()()
         pass

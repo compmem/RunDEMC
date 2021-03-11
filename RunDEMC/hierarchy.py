@@ -10,6 +10,7 @@
 
 import sys
 import numpy as np
+from fastprogress.fastprogress import progress_bar
 
 from .demc import Model, HyperPrior, FixedParams
 from .io import make_dict, gzpickle
@@ -36,6 +37,19 @@ def _flatten(lis):
 class Hierarchy(object):
     """Collection of Model instances.
     """
+    model_names = property(lambda self:
+                           [m._name for m in self._models],
+                           doc="""
+                           List of parameter names.
+                           """)
+
+    hyper_names = property(lambda self:
+                           [h._name for h in self._other_models
+                            if isinstance(h, HyperPrior)],
+                           doc="""
+                           List of parameter names.
+                           """)
+
 
     def __init__(self, models, num_chains=None, partition=None,
                  parallel=None, n_jobs=-1, backend=None):
@@ -191,22 +205,37 @@ class Hierarchy(object):
                                                      self._other_models))
         sys.stdout.flush()
         # make sure to do other_models (fixed and hyper) first
-        for mi, m in enumerate(self._other_models + self._models):
-            sys.stdout.write('%d ' % (mi + 1))
-            sys.stdout.flush()
+        progress = progress_bar(self._other_models + self._models)
+        for mi, m in enumerate(progress):
+            #sys.stdout.write('%d ' % (mi + 1))
+            #sys.stdout.flush()
             # see if must process, must be initialized all with same
             # num_chains
             m._initialize(num_chains=max_num_chains, partition=self._partition)
-        sys.stdout.write('\n')
+        #sys.stdout.write('\n')
 
         # we're done processing
         self._processed = True
+
+    def __getitem__(self, name):
+        try:
+            ind = self.model_names.index(name)
+            return self._models[ind]
+        except ValueError:
+            try:
+                ind = self.hyper_names.index(name)
+                hmods = [h for h in self._other_models
+                         if isinstance(h, HyperPrior)]
+                return hmods[ind]
+            except ValueError:
+                raise ValueError("Model "+str(name)+" not found.")
 
     def __call__(self, num_iter=1, burnin=False, migration_prob=0.0):
         self.sample(num_iter=num_iter, burnin=burnin,
                     migration_prob=migration_prob)
 
-    def sample(self, num_iter=1, burnin=False, migration_prob=0.0):
+    def sample(self, num_iter=1, burnin=False, migration_prob=0.0,
+               reinit_hypers=True):
         if not self._processed:
             self._process()
 
@@ -222,102 +251,54 @@ class Hierarchy(object):
             sys.stdout.write('Iterations (%d): ' % (num_iter))
 
             # loop over iterations
-            for i in range(num_iter):
-                sys.stdout.write('%d' % (i + 1))
-                sys.stdout.flush()
+            progress = progress_bar(range(num_iter))
+            for i in progress:
+                #sys.stdout.write('%d' % (i + 1))
+                #sys.stdout.flush()
 
                 # loop over each other model (fixed and hyper) doing Gibbs
                 for m in self._other_models:
-                    sys.stdout.write('.')
-                    sys.stdout.flush()
                     # run for one iteration
+                    #sys.stdout.write('.')
+                    #sys.stdout.flush()
+                    if isinstance(m, HyperPrior) and burnin:
+                        # skip hyper during burnin
+                        # set proposal to last values
+                        #m._proposal = m._particles[-1]
+                        continue
                     m.sample(1, burnin=burnin, migration_prob=migration_prob)
 
                 # check if running joblib
                 if self._parallel:
-                    # prep each submodel in parallel
-                    res = []
                     jobs = []
-                    pres = []
-                    pjobs = []
                     for m in self._models:
-                        # see if we're going to purify
-                        if m._next_purify == 0:
-                            # recalc the current likes
-                            # apply transformation if necessary
-                            pop = m.apply_param_transform(m._particles[-1])
-
-                            if m._pop_recarray:
-                                pop = np.rec.fromarrays(pop.T, names=m.param_names)
-
-                            # submit the like_fun call in parallel
-                            # do joblib parallel
-                            pjobs.append(delayed(m._like_fun)(pop,
-                                                              *m._like_args))
-                            
-                        # generate the proposals
-                        m._proposal = m._crossover(burnin=burnin)
-
-                        # apply transformation if necessary
-                        pop = m.apply_param_transform(m._proposal)
-
-                        if m._pop_recarray:
-                            pop = np.rec.fromarrays(pop.T, names=m.param_names)
-                            
-                        # submit the like_fun call in parallel
-                        # do joblib parallel
-                        jobs.append(delayed(m._like_fun)(pop,
-                                                         *m._like_args))
-
-                    # submit joblib jobs if necessary
-                    # first for purification step
-                    if len(pjobs) > 0:
-                        # submit the joblib jobs
-                        pres = self._parallel(pjobs)
-                    # then for main evolution
+                        jobs.append(delayed(m.sample)(1, burnin=burnin,
+                                                      migration_prob=migration_prob))
                     if len(jobs) > 0:
                         # submit the joblib jobs
                         res = self._parallel(jobs)
 
-                    # collect the results
-                    p = 0
-                    for mi, m in enumerate(self._models):
-                        # see if purifying
-                        if m._next_purify == 0:
-                            # pull results from joblib
-                            out = pres[p]
-                            if isinstance(out, tuple):
-                                # split into likes and posts
-                                log_likes, posts = out
-                            else:
-                                # just likes
-                                log_likes = out
-                                posts = None
-                            # set the log_likes for that model
-                            m._pure_log_likes = log_likes
+                else:
+                    # just run without parallel
+                    for m in self._models:
+                        m.sample(1, burnin=burnin, migration_prob=migration_prob)
 
-                            # increment the counter
-                            p += 1
-                            
-                        # pull results from joblib
-                        out = res[mi]
-                        if isinstance(out, tuple):
-                            # split into likes and posts
-                            log_likes, posts = out
-                        else:
-                            # just likes
-                            log_likes = out
-                            posts = None
-                        m._prop_log_likes = log_likes
-                        m._prop_posts = posts
-
-                # loop over each model doing some Gibbs action
-                # if they have been prepped above this will just do the MH step
-                for m in self._models:
-                    sys.stdout.write('.')
-                    sys.stdout.flush()
-                    # run for one iteration
-                    m.sample(1, burnin=burnin, migration_prob=migration_prob)
+            # if was burnin, then go back and run Hypers
+            if burnin:
+                if False: #reinit_hypers:
+                    for m in self._other_models:
+                        if isinstance(m, HyperPrior):
+                            # set init_priors to priors
+                            for p in m._params:
+                                p.init_prior = p.prior
+                            m._initialize(force=True)
+                    
+                for i in range(num_iter):
+                    for m in self._other_models:
+                        if isinstance(m, HyperPrior):
+                            # sample it
+                            m.sample(1, burnin=False,
+                                     migration_prob=migration_prob)
 
         finally:
             # see if clean pools
