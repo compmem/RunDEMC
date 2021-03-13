@@ -104,7 +104,11 @@ class DE(Proposal):
 
             # get cumsum so we can sample probabilistically
             w_sum = tweights.sum()
-            p_w = tweights / w_sum
+            if w_sum > 0.0:
+                p_w = tweights / w_sum
+            else:
+                # just use equal prob
+                p_w = 1./len(weights)
             cum_w_sum = np.cumsum(p_w)
 
         # indices for all the particles
