@@ -52,7 +52,7 @@ class Hierarchy(object):
 
 
     def __init__(self, models, num_chains=None, partition=None,
-                 parallel=None, n_jobs=-1, backend=None):
+                 delay_hyper_burnin=False):
         """Figures out the HyperPriors and FixedParams from list of submodels.
         """
         self._models = _flatten(models)
@@ -60,7 +60,8 @@ class Hierarchy(object):
         self._processed = False
         self._num_chains = num_chains
         self._partition = partition
-        self._parallel = parallel
+        self._parallel = None #parallel
+        self._delay_hyper_burnin = delay_hyper_burnin
 
     def save(self, filename, **kwargs):
         # loop over models adding to a dict of dicts
@@ -230,15 +231,17 @@ class Hierarchy(object):
             except ValueError:
                 raise ValueError("Model "+str(name)+" not found.")
 
-    def __call__(self, num_iter=1, burnin=False, migration_prob=0.0):
+    def __call__(self, num_iter=1, burnin=False, migration_prob=0.0,
+                 reinit_hypers=False):
         self.sample(num_iter=num_iter, burnin=burnin,
-                    migration_prob=migration_prob)
+                    migration_prob=migration_prob,
+                    reinit_hypers=reinit_hypers)
 
     def sample(self, num_iter=1, burnin=False, migration_prob=0.0,
-               reinit_hypers=True):
+               reinit_hypers=False):
         if not self._processed:
             self._process()
-
+        
         # put in a try/finally to potentially clean up parallel
         try:
             # see if launch pools
@@ -261,7 +264,8 @@ class Hierarchy(object):
                     # run for one iteration
                     #sys.stdout.write('.')
                     #sys.stdout.flush()
-                    if False: #isinstance(m, HyperPrior) and burnin:
+                    if self._delay_hyper_burnin and \
+                       isinstance(m, HyperPrior) and burnin:
                         # skip hyper during burnin
                         # set proposal to last values
                         #m._proposal = m._particles[-1]
@@ -284,8 +288,8 @@ class Hierarchy(object):
                         m.sample(1, burnin=burnin, migration_prob=migration_prob)
 
             # if was burnin, then go back and run Hypers
-            if False: #burnin:
-                if False: #reinit_hypers:
+            if self._delay_hyper_burnin and burnin:
+                if reinit_hypers:
                     for m in self._other_models:
                         if isinstance(m, HyperPrior):
                             # set init_priors to priors
