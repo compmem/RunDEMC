@@ -52,6 +52,7 @@ class Param(object):
         # hidden variable to indicate whether this param is fixed at
         # this level
         self._fixed = False
+        self._fixed_info = None
 
 
 class Model(object):
@@ -120,7 +121,7 @@ class Model(object):
                  proposal_gen=None,
                  burnin_proposal_gen=None,
                  initial_zeros_ok=False,
-                 init_multiplier=1,
+                 #init_multiplier=1,
                  init_file=None,
                  use_priors=True,
                  verbose=False,
@@ -141,7 +142,7 @@ class Model(object):
             num_chains = int(np.min([len(params) * 10, 100]))
         self._num_chains = num_chains
         self._initial_zeros_ok = initial_zeros_ok
-        self._init_multiplier = init_multiplier
+        self._init_multiplier = 1 # init_multiplier
         self._init_file = init_file
         self._use_priors = use_priors
         self._verbose = verbose
@@ -190,9 +191,6 @@ class Model(object):
         if pop_parallel and self._parallel is None \
            and joblib is not None:
             self._parallel = Parallel(n_jobs=n_jobs, backend=backend)
-
-        # set up the cur_split to None
-        self._cur_split = None
 
         # we have not initialized
         self._initialized = False
@@ -268,10 +266,22 @@ class Model(object):
 
             # fill using init priors (for initialization)
             init_parts = self._num_chains * self._init_multiplier
-            pop = np.hstack([p.init_prior.rvs((init_parts, 1))
-                             if hasattr(p.init_prior, "rvs")
-                             else np.ones((init_parts, 1)) * p.init_prior
-                             for p in self._params])
+            ind = np.ones(init_parts, dtype=np.bool)
+            prop = []
+            for p in self._params:
+                if p._fixed:
+                    # copy from fixed
+                    m = p._fixed_info
+                    prop.append(m['model']._particles[-1][ind, m['param_ind']][:, np.newaxis])
+                elif hasattr(p.init_prior, "rvs"):
+                    # generate with rvs
+                    prop.append(p.init_prior.rvs((init_parts, 1)))
+                else:
+                    # copy the scaler value
+                    prop.append(np.ones((init_parts, 1)) * p.init_prior)
+
+            # stack it up and check dims
+            pop = np.hstack(prop)
             if pop.ndim < 2:
                 pop = pop[:, np.newaxis]
 
@@ -303,17 +313,30 @@ class Model(object):
                         sys.stdout.flush()
 
                     # generate the new pop
-                    npop = np.hstack([p.init_prior.rvs((ind.sum(), 1))
-                                      if hasattr(p.init_prior, "rvs")
-                                      else np.ones((ind.sum(), 1))*p.init_prior
-                                      for p in self._params])
+                    prop = []
+                    for p in self._params:
+                        if p._fixed:
+                            # copy from fixed
+                            m = p._fixed_info
+                            prop.append(m['model']._particles[-1][ind, m['param_ind']][:, np.newaxis])
+                        elif hasattr(p.init_prior, "rvs"):
+                            # generate with rvs
+                            prop.append(p.init_prior.rvs((ind.sum(), 1)))
+                        else:
+                            # copy the scaler value
+                            prop.append(np.ones((ind.sum(), 1)) * p.init_prior)
+
+                    # stack and check
+                    npop = np.hstack(prop)
                     if npop.ndim < 2:
                         npop = npop[:, np.newaxis]
-
+                    
+                    # add in these new proposals and test them
                     pop[ind, :] = npop
 
                     # calc the log likes for those new pops
-                    log_likes[ind], temp_posts = self._calc_log_likes(pop[ind])
+                    log_likes[ind], temp_posts = self._calc_log_likes(pop[ind],
+                                                                      ind)
                     if temp_posts is not None:
                         posts[ind] = temp_posts
 
@@ -321,23 +344,23 @@ class Model(object):
                     ind = np.isinf(log_likes) | np.isnan(log_likes)
                     good_ind = ~ind
 
-                # save the good pop
-                good_ind = ~ind
-                pop = pop[good_ind]
-                if pop.ndim < 2:
-                    pop = pop[:, np.newaxis]
-                log_likes = log_likes[good_ind]
-                if posts is not None:
-                    posts = posts[good_ind]
+                # # save the good pop
+                # good_ind = ~ind
+                # pop = pop[good_ind]
+                # if pop.ndim < 2:
+                #     pop = pop[:, np.newaxis]
+                # log_likes = log_likes[good_ind]
+                # if posts is not None:
+                #     posts = posts[good_ind]
 
             # calc the accept_rate
             self._accept_rate.append(float(len(pop))/num_attempts)
 
-            if len(pop) > self._num_chains:
-                pop = pop[:self._num_chains]
-                log_likes = log_likes[:self._num_chains]
-                if posts is not None:
-                    posts = posts[:self._num_chains]
+            # if len(pop) > self._num_chains:
+            #     pop = pop[:self._num_chains]
+            #     log_likes = log_likes[:self._num_chains]
+            #     if posts is not None:
+            #         posts = posts[:self._num_chains]
 
             # append the initial log_likes and particles
             self._times.append(time.time() - stime)
@@ -354,6 +377,7 @@ class Model(object):
 
         # say we've initialized
         self._initialized = True
+        self._needs_new_generation = True
 
     def apply_param_transform(self, pop, inverse=False):
         if self._transform_needed:
@@ -378,7 +402,14 @@ class Model(object):
                         pop[..., i] = invtrans(pop[..., i])
         return pop
 
-    def _calc_log_likes(self, pop):
+    def _calc_log_likes(self, pop, cur_split=None):
+        # check the cur_split
+        if cur_split is None:
+            if len(pop) != self._num_chains:
+                raise ValueError("Proposal must be same size as num chains if no split is specified.")
+            else:
+                cur_split = np.ones(self._num_chains, dtype=np.bool)
+                
         # apply transformation if necessary
         pop = self.apply_param_transform(pop)
 
@@ -389,18 +420,36 @@ class Model(object):
         if self._pop_parallel and self._parallel is not None:
             if self._pop_recarray:
                 # must make indiv 1d rec array
-                out = self._parallel(delayed(self._like_fun)(np.atleast_1d(indiv),
-                                                             *(self._like_args))
-                                     for indiv in pop)
+                if isinstance(self, HyperPrior) or isinstance(self, FixedParams):
+                    # must provide the current split
+                    out = self._parallel(delayed(self._like_fun)(np.atleast_1d(indiv),
+                                                                 cur_split,
+                                                                 *(self._like_args))
+                                         for indiv in pop)
+                else:
+                    out = self._parallel(delayed(self._like_fun)(np.atleast_1d(indiv),
+                                                                 *(self._like_args))
+                                         for indiv in pop)
             else:
                 # must make indiv 2d array
-                out = self._parallel(delayed(self._like_fun)(np.atleast_2d(indiv),
-                                                             *(self._like_args))
-                                     for indiv in pop)
+                if isinstance(self, HyperPrior) or isinstance(self, FixedParams):
+                    # must provide the current split
+                    out = self._parallel(delayed(self._like_fun)(np.atleast_2d(indiv),
+                                                                 cur_split
+                                                                 *(self._like_args))
+                                         for indiv in pop)
+                else:
+                    out = self._parallel(delayed(self._like_fun)(np.atleast_2d(indiv),
+                                                                 *(self._like_args))
+                                         for indiv in pop)
 
         else:
-            # just process in serial
-            out = self._like_fun(pop, *(self._like_args))
+            # just process all at once in serial
+            if isinstance(self, HyperPrior) or isinstance(self, FixedParams):
+                # must provide the current split
+                out = self._like_fun(pop, cur_split, *(self._like_args))
+            else:
+                out = self._like_fun(pop, *(self._like_args))
 
         # process the results
         if isinstance(out, tuple):
@@ -466,15 +515,12 @@ class Model(object):
 
     def _purify(self):
         # we're going to purify, so just copy last state
+        cur_split = np.ones(self._num_chains, dtype=np.bool)
         proposal = self._particles[-1]
 
-        # eval the population (this is separate from the proposals so
-        # that we can parallelize the entire operation)
-        if self._pure_log_likes is None:
-            pure_log_likes, temp_posts = self._calc_log_likes(proposal)
-        else:
-            pure_log_likes = self._pure_log_likes
-            # prop_posts = self._prop_posts
+        # eval the population
+        pure_log_likes, temp_posts = self._calc_log_likes(proposal,
+                                                          cur_split)
 
         # no MH step, just set the log_likes and weights
         # only keep non-inf
@@ -486,9 +532,6 @@ class Model(object):
 
         # reset the purification
         self._next_purify += self._purify_every
-
-        # clean up for next
-        self._pure_log_likes = None
 
     def _migrate(self):
         # pick which items will migrate
@@ -534,7 +577,7 @@ class Model(object):
             self._weights[-1][k['ind']] = k['weight']
             self._log_likes[-1][k['ind']] = k['log_like']
 
-    def _post_evolve(self, pop, kept):
+    def _post_evolve(self, pop, cur_split, kept):
         pass
 
     def _evolve(self, burnin=False):
@@ -545,29 +588,30 @@ class Model(object):
         split_ind = self._get_split_ind()
 
         # copy the prev state
-        self._particles.append(self._particles[-1].copy())
-        self._log_likes.append(self._log_likes[-1].copy())
-        self._weights.append(self._weights[-1].copy())
-        if len(self._posts) > 0:
-            self._posts.append(self._posts[-1].copy())
+        if self._needs_new_generation:
+            self._particles.append(self._particles[-1].copy())
+            self._log_likes.append(self._log_likes[-1].copy())
+            self._weights.append(self._weights[-1].copy())
+            if len(self._posts) > 0:
+                self._posts.append(self._posts[-1].copy())
+            self._needs_new_generation = False
         
         # loop over two halves
         kept = np.zeros(len(self._particles[-1]), dtype=np.bool)
         for cur_split in [split_ind, ~split_ind]:
-            # make the cur split avail
-            self._cur_split = cur_split
-            
             # generate new proposals
             proposal = self._crossover(cur_split, ~cur_split,
                                        parts_ind, burnin=burnin)
 
             # eval the proposal
-            prop_log_likes, prop_posts = self._calc_log_likes(proposal)
+            prop_log_likes, prop_posts = self._calc_log_likes(proposal,
+                                                              cur_split)
 
             # see if recalc previous likes (for HyperPrior)
             if self._recalc_likes:
                 prev_log_likes, prev_posts = self._calc_log_likes(
-                    self._particles[-1][cur_split])
+                    self._particles[-1][cur_split],
+                    cur_split)
             else:
                 prev_log_likes = self._log_likes[-1][cur_split]
 
@@ -579,7 +623,8 @@ class Model(object):
             if self._use_priors:
                 prop_log_prior, prev_log_prior = self.calc_log_prior(
                     proposal,
-                    self._particles[-1][cur_split])
+                    self._particles[-1][cur_split],
+                    cur_split=cur_split)
                 weights = prop_log_likes + prop_log_prior
                 log_diff += np.float64(prop_log_prior - prev_log_prior)
 
@@ -607,13 +652,14 @@ class Model(object):
                 self._posts[-1][split_keep_ind] = prop_posts[keep]
 
             # call post_evolve hook
-            self._post_evolve(self._particles[-1][cur_split], keep)
+            self._post_evolve(self._particles[-1][cur_split], cur_split, keep)
 
             # save the kept info
             kept[cur_split] = keep
 
         # save the acceptance rate
         self._accept_rate.append(float(kept.sum())/len(kept))
+        self._needs_new_generation = True
 
     def __call__(self, num_iter, burnin=False, migration_prob=0.0):
         self.sample(num_iter, burnin=burnin, migration_prob=migration_prob)
@@ -657,7 +703,7 @@ class Model(object):
         self._times.extend(times)
         return times
 
-    def calc_log_prior(self, *props):
+    def calc_log_prior(self, *props, cur_split=None):
         # set starting log_priors
         log_priors = [np.zeros(len(p)) for p in props]
 
@@ -675,7 +721,7 @@ class Model(object):
                 with np.errstate(divide='ignore'):
                     if isinstance(param.prior, HyperPrior):
                         # must provide cur_split
-                        log_pdf = np.log(param.prior.pdf(p, self._cur_split))
+                        log_pdf = np.log(param.prior.pdf(p, cur_split))
                     else:
                         log_pdf = np.log(param.prior.pdf(p))
 
@@ -717,27 +763,18 @@ class HyperPrior(Model):
         # We need to recalc likes of prev iteration in case of hyperprior
         self._recalc_likes = True
 
-        # keep track of current pop
-        self._cur_iter = -1
-        pass
-
-    def _dist_like(self, pop, *args):
+    def _dist_like(self, pop, cur_split, *args):
         # the args will contain the list of params in the other models
         # that use this model as a prior
         if len(args) == 0:
             # we are not likely
             return -np.ones(len(pop)) * np.inf
 
+        if cur_split is None:
+            raise ValueError("Current split can not be empty.")
+
         # default to not like
         log_like = np.zeros(len(pop))
-
-        # # see if pick random inds for sub models
-        # if self._cur_iter != len(self._particles):
-        #     # pick new indices
-        #     self._cur_iter = len(self._particles)
-        #     self._cur_ind = [[np.random.randint(0,m['model']._num_chains)
-        #                       for m in args]
-        #                      for p in pop]
 
         # loop over population (eventually parallelize this)
         d_args = [pop[:, i] for i in range(pop.shape[1])]
@@ -747,7 +784,7 @@ class HyperPrior(Model):
                 return -np.ones(len(pop)) * np.inf
             # ignore divide by zero in log here
             with np.errstate(divide='ignore'):
-                log_like += np.log(d.pdf(m['model']._particles[-1][self._cur_split,
+                log_like += np.log(d.pdf(m['model']._particles[-1][cur_split,
                                                                    m['param_ind']]))
 
         # for i,p in enumerate(pop):
@@ -824,7 +861,7 @@ class HyperPrior(Model):
 class FixedParams(Model):
     """Modeled parameter that is fixed across lower-level models
 
-    sigma = FixedParam('sigma', prior=np.dists.invgamma(1,1))
+    sigma = Param('sigma', prior=np.dists.invgamma(1,1))
     params = [Param('mu', prior=dists.normal(0,1)),
               sigma]
     """
@@ -840,6 +877,8 @@ class FixedParams(Model):
         # set each param to be fixed
         for i in range(len(params)):
             params[i]._fixed = True
+            params[i]._fixed_info = {'model': self,
+                                     'param_ind': i}
 
         # save the input params
         self._submodel_params = params
@@ -875,7 +914,7 @@ class FixedParams(Model):
 
         pass
 
-    def _fixed_like(self, pop, *args):
+    def _fixed_like(self, pop, cur_split, *args):
         # the args will contain the list of params in the other models
         # that use this param
         if len(args) == 0:
@@ -887,9 +926,6 @@ class FixedParams(Model):
 
         # loop over models, calculating their likes with the proposed value
         # of this fixed param
-        res = []
-        jobs = []
-        mods = []
         for m in args:
             #from IPython.core.debugger import Tracer ; Tracer()()
             # make sure the submodel has initialized
@@ -897,87 +933,59 @@ class FixedParams(Model):
                 return -np.ones(len(pop)) * np.inf
 
             # get the current population and replace with this proposal
-            mpop = m['model']._particles[-1].copy()[self._cur_split]
+            mpop = m['model']._particles[-1].copy()[cur_split]
 
             # set all the fixed params
             for i, j in m['param_ind']:
                 mpop[:, i] = pop[:, j]
 
             # see if we're just updating log_like for updated children
-            if np.all((mpop - m['model']._particles[-1][self._cur_split]) == 0.0):
+            if np.all((mpop - m['model']._particles[-1][cur_split]) == 0.0):
                 # it's the same params, so just pull the likes
-                mprop_log_likes = m['model']._log_likes[-1][self._cur_split]
+                mprop_log_likes = m['model']._log_likes[-1][cur_split]
                 log_like += mprop_log_likes
                 self._mprop_log_likes[m['model']] = mprop_log_likes
+
+                if m['model']._use_priors:
+                   mprop_log_prior = m['model']._weights[-1][cur_split] - \
+                       m['model']._log_likes[-1][cur_split]
+                   self._mprop_log_prior[m['model']] = mprop_log_prior
             else:
                 # calc the log-likes from all the models using these params
-                if not isinstance(m['model'], HyperPrior) and \
-                   not isinstance(m['model'], FixedParams) and \
-                   self._parallel:
-                    # submit to joblib
-                    mpopx = m['model'].apply_param_transform(mpop)
-                    if m['model']._pop_recarray:
-                        mpopx = np.rec.fromarrays(mpopx.T,
-                                                  names=m['model'].param_names)
-
-                    jobs.append(delayed(m['model']._like_fun)(mpopx,
-                                                              *m['model']._like_args))
-
-                    # append to list of mods we're processing
-                    mods.append(m)
-                else:
-                    # calc log likes in serial
-                    mprop_log_likes, mprop_posts = m['model']._calc_log_likes(mpop)
-
-                    # save these model likes for updating the model with those
-                    # that were kept when we call _post_evolve
-                    self._mprop_log_likes[m['model']] = mprop_log_likes
-
-                    # aggregate log_likes for each particle
-                    log_like += mprop_log_likes
-
-                if m['model']._use_priors:
-                    mprop_log_prior = m['model'].calc_log_prior(mpop)
-
-                # save the prior
-                if m['model']._use_priors:
-                    self._mprop_log_prior[m['model']] = mprop_log_prior
-
-        if len(jobs) > 0 and self._parallel:
-            # submit the joblib jobs
-            res = self._parallel(jobs)
-
-        if len(res) > 0:
-            # collect the results
-            for mi, m in enumerate(mods):
-                # wait for the result
-                # pull results from joblib
-                out = res[mi]
-
-                if isinstance(out, tuple):
-                    # split into likes and posts
-                    mprop_log_likes, mprop_posts = out
-                else:
-                    # just likes
-                    mprop_log_likes = out
-                    mprop_posts = None
-
-                # add the log_likes
-                log_like += mprop_log_likes
+                # must provide current split
+                mprop_log_likes, mprop_posts = m['model']._calc_log_likes(mpop,
+                                                                          cur_split)
 
                 # save these model likes for updating the model with those
                 # that were kept when we call _post_evolve
                 self._mprop_log_likes[m['model']] = mprop_log_likes
 
+                # aggregate log_likes for each particle
+                log_like += mprop_log_likes
+
+                if m['model']._use_priors:
+                   mprop_log_prior = m['model'].calc_log_prior(mpop,
+                                                               cur_split=cur_split)
+                   self._mprop_log_prior[m['model']] = mprop_log_prior
+
         return log_like
 
-    def _post_evolve(self, pop, kept):
+    def _post_evolve(self, pop, cur_split, kept):
         # for any particle we keep, go back through the submodels and
         # update their params and likelihoods for the most recent pop
         # loop over the models
-        split_kept_ind = self._cur_split.copy()
+        split_kept_ind = cur_split.copy()
         split_kept_ind[split_kept_ind] = kept
         for m in self._like_args:
+            # copy the prev state
+            if m['model']._needs_new_generation:
+                m['model']._particles.append(m['model']._particles[-1].copy())
+                m['model']._log_likes.append(m['model']._log_likes[-1].copy())
+                m['model']._weights.append(m['model']._weights[-1].copy())
+                if len(m['model']._posts) > 0:
+                    m['model']._posts.append(m['model']._posts[-1].copy())
+                m['model']._needs_new_generation = False
+
             # update most recent particles
             for i, j in m['param_ind']:
                 m['model']._particles[-1][split_kept_ind, i] = pop[kept, j]
