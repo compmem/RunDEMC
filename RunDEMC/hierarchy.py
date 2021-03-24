@@ -13,6 +13,7 @@ import numpy as np
 from fastprogress.fastprogress import progress_bar
 
 from .demc import Model, HyperPrior, FixedParams
+from .demc import _evolve, _trimmed_init_priors, _init_chains
 from .io import make_dict, gzpickle
 
 # test for joblib
@@ -21,6 +22,13 @@ try:
     from joblib import Parallel, delayed
 except ImportError:
     joblib = None
+
+# test for dask
+try:
+    from dask.distributed import get_client
+    has_dask = True
+except ImportError:
+    has_dask = False
 
 
 def _flatten(lis):
@@ -51,16 +59,16 @@ class Hierarchy(object):
                            """)
 
 
-    def __init__(self, models, num_chains=None, partition=None,
-                 delay_hyper_burnin=False):
+    def __init__(self, models, num_chains=None,
+                 parallel=None, use_dask=False, delay_hyper_burnin=False):
         """Figures out the HyperPriors and FixedParams from list of submodels.
         """
         self._models = _flatten(models)
         self._other_models = []
         self._processed = False
         self._num_chains = num_chains
-        self._partition = partition
-        self._parallel = None #parallel
+        self._parallel = parallel
+        self._use_dask = use_dask
         self._delay_hyper_burnin = delay_hyper_burnin
 
     def save(self, filename, **kwargs):
@@ -126,9 +134,9 @@ class Hierarchy(object):
         fparams = []
         for level in range(len(self._fixed_params)):
             if len(self._fixed_params[level]) > 0:
+                # PBS: do we need to customize fixed parallel here?
                 fparams.append(FixedParams('_fixed_%d' % level,
-                                           self._fixed_params[level],
-                                           parallel=self._parallel))
+                                           self._fixed_params[level]))
             else:
                 fparams.append([])
 
@@ -206,13 +214,93 @@ class Hierarchy(object):
                                                      self._other_models))
         sys.stdout.flush()
         # make sure to do other_models (fixed and hyper) first
-        progress = progress_bar(self._other_models + self._models)
-        for mi, m in enumerate(progress):
+        for mi, m in enumerate(self._other_models):
             #sys.stdout.write('%d ' % (mi + 1))
             #sys.stdout.flush()
             # see if must process, must be initialized all with same
             # num_chains
-            m._initialize(num_chains=max_num_chains, partition=self._partition)
+            m._initialize(num_chains=max_num_chains)
+
+        # process the main models
+        if self._parallel:
+            jobs = self._parallel(delayed(_init_chains)(
+                _trimmed_init_priors(m._params),
+                m._num_chains,
+                initial_zeros_ok=m._initial_zeros_ok,
+                verbose=m._verbose,
+                like_fun=m._like_fun,
+                like_args=m._like_args,
+                is_fixed_or_hyper=m._is_fixed_or_hyper,
+                pop_recarray=m._pop_recarray,
+                transforms=m._get_transforms(),
+                param_names=m.param_names,
+                use_priors=m._use_priors,
+                parallel=m._parallel,
+                use_dask=m._use_dask)
+                                  for m in self._models)
+
+            # process the results
+            for i, res in enumerate(jobs):
+                # save the init results
+                m = self._models[i]
+
+                # save the return values
+                m._particles = [res['particles']]
+                m._log_likes = [res['log_likes']]
+                m._weights = [res['weights']]
+                m._times = [res['times']]
+                m._accept_rate = [res['accept_rate']]
+
+                # say we've initialized
+                m._initialized = True
+
+        elif self._use_dask:
+            # grab the client
+            client = get_client()
+
+            jobs = []
+            for mi, m in enumerate(self._models):
+                # loop over models
+                m._num_chains = max_num_chains
+
+                jobs.append(client.submit(_init_chains,
+                                          _trimmed_init_priors(m._params),
+                                          m._num_chains,
+                                          initial_zeros_ok=m._initial_zeros_ok,
+                                          verbose=m._verbose,
+                                          like_fun=m._like_fun,
+                                          like_args=m._like_args,
+                                          is_fixed_or_hyper=m._is_fixed_or_hyper,
+                                          pop_recarray=m._pop_recarray,
+                                          transforms=m._get_transforms(),
+                                          param_names=m.param_names,
+                                          use_priors=m._use_priors,
+                                          parallel=m._parallel,
+                                          use_dask=m._use_dask,
+                                          pure=False))
+
+            for i, res in enumerate(client.gather(jobs)):
+                # save the init results
+                m = self._models[i]
+
+                # save the return values
+                m._particles = [res['particles']]
+                m._log_likes = [res['log_likes']]
+                m._weights = [res['weights']]
+                m._times = [res['times']]
+                m._accept_rate = [res['accept_rate']]
+
+                # say we've initialized
+                m._initialized = True
+
+        else:
+            progress = progress_bar(self._models)
+            for mi, m in enumerate(progress):
+                #sys.stdout.write('%d ' % (mi + 1))
+                #sys.stdout.flush()
+                # see if must process, must be initialized all with same
+                # num_chains
+                m._initialize(num_chains=max_num_chains)
         #sys.stdout.write('\n')
 
         # we're done processing
@@ -251,6 +339,10 @@ class Hierarchy(object):
                 # self._parallel._initialize_pool()
                 self._parallel.__enter__()
 
+            if self._use_dask:
+                # grab the client
+                client = get_client()
+
             sys.stdout.write('Iterations (%d): ' % (num_iter))
 
             # loop over iterations
@@ -272,15 +364,87 @@ class Hierarchy(object):
                         continue
                     m.sample(1, burnin=burnin, migration_prob=migration_prob)
 
-                # check if running joblib
-                if self._parallel:
+                if self._use_dask or self._parallel:
+                    # handle migration and purification for each model
+                    purified = []
                     jobs = []
                     for m in self._models:
-                        jobs.append(delayed(m.sample)(1, burnin=burnin,
-                                                      migration_prob=migration_prob))
-                    if len(jobs) > 0:
-                        # submit the joblib jobs
-                        res = self._parallel(jobs)
+                        # check if migrate
+                        if np.random.rand() < migration_prob:
+                            # migrate, which is deterministic and done in place
+                            m._migrate()
+
+                        # purify if it's time
+                        if m._next_purify == 0:
+                            purified.append(m)
+                            if self._use_dask:
+                                jobs.append(client.submit(_calc_log_likes,
+                                                          m._particles[-1],
+                                                          m._like_fun,
+                                                          m._like_args,
+                                                          cur_split=None,
+                                                          is_fixed_or_hyper=m._is_fixed_or_hyper,
+                                                          pop_recarray=m._pop_recarray,
+                                                          transforms=m._get_transforms(),
+                                                          param_names=m.param_names,
+                                                          parallel=m._parallel,
+                                                          use_dask=m._use_dask,
+                                                          pure=False))
+                            elif self._parallel:
+                                jobs.append(delayed(_calc_log_likes)(
+                                    m._particles[-1],
+                                    m._like_fun,
+                                    m._like_args,
+                                    cur_split=None,
+                                    is_fixed_or_hyper=m._is_fixed_or_hyper,
+                                    pop_recarray=m._pop_recarray,
+                                    transforms=m._get_transforms(),
+                                    param_names=m.param_names,
+                                    parallel=m._parallel,
+                                    use_dask=m._use_dask))
+
+                            m._next_purify += m._purify_every
+
+                        if m._purify_every > 0:
+                            # subtract one
+                            self._next_purify -= 1
+                        
+                    # gather the purified models
+                    if self._use_dask:
+                        results = client.gather(jobs)
+                    elif self._parallel:
+                        results = self._parallel(jobs)
+                    for m, res in zip(purified, results):
+                        # only keep nonzero
+                        keep = ~np.isinf(pure_log_likes)
+                        m._weights[-1][keep] = m._weights[-1][keep] - \
+                                                  m._log_likes[-1][keep] + \
+                                                  pure_log_likes[keep]
+                        m._log_likes[-1][keep] = pure_log_likes[keep]
+                            
+                    # do the normal evolution step
+                    jobs = []
+                    for m in self._models:
+                        # get prep for evolution
+                        evo_args = m._get_evo_args(burnin=burnin)
+
+                        # get new state
+                        if self._use_dask:
+                            jobs.append(client.submit(_evolve,
+                                                      pure=False, **evo_args))
+                        elif self._parallel:
+                            jobs.append(delayed(_evolve)(**evo_args))
+
+                        
+
+                    # process the results
+                    if self._use_dask:
+                        results = client.gather(jobs)
+                    elif self._parallel:
+                        results = self._parallel(jobs)
+                    for i, evo_res in enumerate(results):
+                        # save the state
+                        self._models[i]._save_evolution(**evo_res)
 
                 else:
                     # just run without parallel
