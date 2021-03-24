@@ -24,13 +24,10 @@ class Proposal(object):
     def _generate(self, pop, ref_pop, num_params, weights=None):
         raise NotImplemented("You must define this method in a subclass.")
 
-    def generate(self, pop, ref_pop=None, weights=None, params=None):
+    def generate(self, pop, ref_pop=None, weights=None, fixed=None):
         # process the fixed params
-        fixed = np.zeros(pop.shape[1], dtype=np.bool)
-        if params is not None:
-            for i, param in enumerate(params):
-                if param._fixed or not hasattr(param.prior, "pdf"):
-                    fixed[i] = True
+        if fixed is None:
+            fixed = np.zeros(pop.shape[1], dtype=np.bool)
 
         # process the ref_pop
         if ref_pop is None:
@@ -52,8 +49,8 @@ class Proposal(object):
         # return the new proposal
         return proposal
 
-    def __call__(self, pop, ref_pop=None, weights=None, params=None):
-        return self.generate(pop, ref_pop, weights, params)
+    def __call__(self, pop, ref_pop=None, weights=None, fixed=None):
+        return self.generate(pop, ref_pop, weights, fixed)
 
 
 class DE(Proposal):
