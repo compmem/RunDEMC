@@ -21,7 +21,7 @@ def make_dict(model, burnin=None, **kwargs):
                 weights=model.weights,
                 log_likes=model.log_likes,
                 times=model.times,
-                posts=model.posts, burnin=burnin,
+                burnin=burnin,
                 accept_rate=model.accept_rate,
                 **kwargs)
 
