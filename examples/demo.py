@@ -12,8 +12,6 @@ from RunDEMC import Model, Param, dists
 from RunDEMC import joint_plot, violin_plot
 import pylab as pl
 
-save_posts = True
-
 
 def eval_fun(pop, *args):
     # errors = []
@@ -34,13 +32,10 @@ def eval_fun(pop, *args):
     # sae = np.sum(np.abs(errors),1)
 
     # calculate the weight with a normal kernel
-    weights = np.log(dists.normal(mean=0.0, std=pop['delta']).pdf(sse))
+    weights = dists.normal(mean=0.0, std=pop['delta']).logpdf(sse)
 
     # see if return both weights and predicted vals
-    if save_posts:
-        return weights, pred
-    else:
-        return weights
+    return weights
 
 
 # set up the data
@@ -72,12 +67,22 @@ ind = mod.param_names.index('delta')
 fixed_delta = mod.particles[-1, :, ind].mean()
 mod._particles[-1][:, ind] = fixed_delta
 mod._params[ind].prior = fixed_delta
-mod._log_likes[-1], temp_posts = mod._calc_log_likes(mod._particles[-1])
-mod._weights[-1][:] = mod._log_likes[-1][:] + \
-    mod.calc_log_prior(mod._particles[-1])
+new_log_likes = mod.call_calc_log_likes(mod._particles[-1])
+mod._weights[-1][:] = mod._weights[-1] - mod._log_likes[-1][:] + \
+    new_log_likes
+mod._log_likes[-1][:] = new_log_likes
 
 # run for more iterations to map posterior
 mod(1000, burnin=False)
+
+# show best fit
+burnin = 400
+print("Best fitting params:")
+best_ind = mod.weights[burnin:].argmax()
+indiv = [mod.particles[burnin:, :, i].ravel()[best_ind]
+         for i in range(mod.particles.shape[-1])]
+for p, v in zip(mod.param_names, indiv):
+    print('%s: %f' % (p, v))
 
 # joint plot
 pl.figure(1)
@@ -89,18 +94,10 @@ ax = joint_plot(mod.particles[burnin:, :, :-1],
                 rot=45, sep=.02)
 pl.show()
 
-# ppd plot
-pl.figure(2)
-violin_plot([d.ravel() for d in mod.posts[burnin:].T],
-            positions=xData)
-pl.plot(xData, yData, 'xr', markersize=10)
-pl.show()
+# # ppd plot
+# pl.figure(2)
+# violin_plot([d.ravel() for d in mod.posts[burnin:].T],
+#             positions=xData)
+# pl.plot(xData, yData, 'xr', markersize=10)
+# pl.show()
 
-# show best fit
-burnin = 400
-print("Best fitting params:")
-best_ind = mod.weights[burnin:].argmax()
-indiv = [mod.particles[burnin:, :, i].ravel()[best_ind]
-         for i in range(mod.particles.shape[-1])]
-for p, v in zip(mod.param_names, indiv):
-    print('%s: %f' % (p, v))
