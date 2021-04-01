@@ -115,9 +115,6 @@ class Model(object):
                            Acceptance rate as an array.
                            """)
 
-    default_prop_gen = DE(gamma_best=0.0, rand_base=False)
-    default_burnin_prop_gen = DE(gamma_best=None, rand_base=True)
-
     def __init__(self, name, params, like_fun,
                  like_args=None,
                  num_chains=None,
@@ -168,10 +165,17 @@ class Model(object):
 
         # set up proposal generator
         if proposal_gen is None:
-            proposal_gen = self.default_prop_gen
+            # set gamma based on original DEMC paper
+            gamma = 2.38 / np.sqrt(2*len(self._params))
+            proposal_gen = DE(gamma=gamma,
+                              gamma_best=0.0,
+                              rand_base=False)
         self._prop_gen = proposal_gen
         if burnin_proposal_gen is None:
-            burnin_proposal_gen = self.default_burnin_prop_gen
+            gamma = 2.38 / np.sqrt(2*len(self._params))
+            burnin_proposal_gen = DE(gamma=gamma,
+                                     gamma_best=(.4, 1.0),
+                                     rand_base=True)
         self._burnin_prop_gen = burnin_proposal_gen
 
         # set up the like function
@@ -547,7 +551,7 @@ def _init_chains(priors, num_chains, initial_zeros_ok=False, verbose=False,
     pop = None
     num_attempts = 0
     # keep looping until we have enough non-zero
-    while pop is None or np.any(np.isnan(pop)) or \
+    while (pop is None) or np.any(np.isnan(pop)) or \
           ((not initial_zeros_ok) and (good_ind.sum() < num_chains)):
         # update attempt count
         num_attempts += ind.sum()
@@ -847,13 +851,16 @@ def _evolve(prop_gen=None, parts_ind=None, split_ind=None,
             prop_weights = prop_log_likes
             prev_weights = prev_log_likes
 
+        # calc acceptance in log space
+        keep = np.log(np.random.rand(len(log_diff))) < log_diff
+
         # handle much greater than one
-        log_diff[log_diff > 0.0] = 0.0
+        #log_diff[log_diff > 0.0] = 0.0
 
         # now exp so we can get the other probs
-        mh_prob = np.exp(log_diff)
-        mh_prob[np.isnan(mh_prob)] = 0.0
-        keep = (mh_prob - np.random.rand(len(mh_prob))) > 0.0
+        # mh_prob = np.exp(log_diff)
+        # mh_prob[np.isnan(mh_prob)] = 0.0
+        # keep = (mh_prob - np.random.rand(len(mh_prob))) > 0.0
 
         # modify the relevant particles
         # use mask the mask approach
@@ -1151,9 +1158,14 @@ class FixedParams(Model):
                 self._mprop_log_likes[m['model']] = np.zeros(len(m['model']._particles[-1]))
                 self._mprop_log_prior[m['model']] = np.zeros(len(m['model']._particles[-1]))
 
-            # set all the fixed params
+            # set all the fixed params and transforms
+            transforms = m['model']._get_transforms()
             for i, j in m['param_ind']:
+                # set the param
                 mpop[:, i] = pop[:, j]
+
+                # fixed param has already been transformed
+                transforms[i] = None
 
             # see if we're just updating log_like for updated children
             if np.all((mpop - m['model']._particles[-1][cur_split]) == 0.0):
@@ -1177,7 +1189,7 @@ class FixedParams(Model):
                                                   cur_split=cur_split,
                                                   is_fixed_or_hyper=m['model']._is_fixed_or_hyper,
                                                   pop_recarray=m['model']._pop_recarray,
-                                                  transforms=self._get_transforms(),
+                                                  transforms=transforms,
                                                   param_names=m['model'].param_names,
                                                   parallel=m['model']._parallel,
                                                   use_dask=m['model']._use_dask)
@@ -1230,6 +1242,11 @@ class FixedParams(Model):
         # from IPython.core.debugger import Tracer ; Tracer()()
         pass
 
+    def _all_submodels_hyperpriors(self):
+        for m in self._like_args:
+            if not isinstance(m['model'], HyperPrior):
+                return False
+        return True
 
 if __name__ == "__main__":
 

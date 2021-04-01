@@ -60,7 +60,8 @@ class Hierarchy(object):
 
 
     def __init__(self, models, num_chains=None,
-                 parallel=None, use_dask=False, delay_hyper_burnin=False):
+                 parallel=None, use_dask=False, delay_hyper_burnin=False,
+                 separate_fixed=False):
         """Figures out the HyperPriors and FixedParams from list of submodels.
         """
         self._models = _flatten(models)
@@ -70,6 +71,7 @@ class Hierarchy(object):
         self._parallel = parallel
         self._use_dask = use_dask
         self._delay_hyper_burnin = delay_hyper_burnin
+        self._separate_fixed = separate_fixed
 
     def save(self, filename, **kwargs):
         # loop over models adding to a dict of dicts
@@ -135,8 +137,16 @@ class Hierarchy(object):
         for level in range(len(self._fixed_params)):
             if len(self._fixed_params[level]) > 0:
                 # PBS: do we need to customize fixed parallel here?
-                fparams.append(FixedParams('_fixed_%d' % level,
-                                           self._fixed_params[level]))
+                if self._separate_fixed:
+                    # make a single FixedParams for each param
+                    for p in self._fixed_params[level]:
+                        fparams.append(FixedParams(
+                            '_fixed_%d_%s' % (level, p.name),
+                            [p]))
+                else:
+                    # combine them all into a single FixedParams instance
+                    fparams.append(FixedParams('_fixed_%d' % level,
+                                               self._fixed_params[level]))
             else:
                 fparams.append([])
 
@@ -179,6 +189,9 @@ class Hierarchy(object):
             sys.stdout.write('%d ' % (mi))
             sys.stdout.flush()
 
+            # get var to save max submodel params for setting DE
+            max_submodel_params = 0
+            
             # loop over the models looking for fixed params
             m_args = []
             for n in self._models + flattened_hps:
@@ -188,6 +201,8 @@ class Hierarchy(object):
                     # see if used as fixed param
                     if p in m._submodel_params:
                         p_inds.append((i, m._submodel_params.index(p)))
+                        if len(n._params) > max_submodel_params:
+                            max_submodel_params = len(n._params)
 
                 if len(p_inds) > 0:
                     # we have a match, so add the vals
@@ -195,6 +210,12 @@ class Hierarchy(object):
 
             # set the args for this model
             m._like_args = tuple(m_args)
+
+            # set the DE (eventually check to see if isn't DE)
+            gamma = 2.38 / np.sqrt(2*max_submodel_params)
+            m._prop_gen._gamma = (gamma, gamma)
+            m._burnin_prop_gen._gamma = (gamma, gamma)
+            
         sys.stdout.write('\n')
 
         # prepend the hypers and fixed to model list
@@ -356,8 +377,10 @@ class Hierarchy(object):
                     # run for one iteration
                     #sys.stdout.write('.')
                     #sys.stdout.flush()
-                    if self._delay_hyper_burnin and \
-                       isinstance(m, HyperPrior) and burnin:
+                    if burnin and self._delay_hyper_burnin and \
+                       (isinstance(m, HyperPrior) or\
+                        (isinstance(m, FixedParams) and
+                         m._all_submodels_hyperpriors())):
                         # skip hyper during burnin
                         # set proposal to last values
                         #m._proposal = m._particles[-1]
@@ -455,7 +478,9 @@ class Hierarchy(object):
             if self._delay_hyper_burnin and burnin:
                 if reinit_hypers:
                     for m in self._other_models:
-                        if isinstance(m, HyperPrior):
+                        if isinstance(m, HyperPrior) or\
+                           (isinstance(m, FixedParams) and
+                            m._all_submodels_hyperpriors()):
                             # set init_priors to priors
                             for p in m._params:
                                 p.init_prior = p.prior
@@ -463,7 +488,9 @@ class Hierarchy(object):
                     
                 for i in range(num_iter):
                     for m in self._other_models:
-                        if isinstance(m, HyperPrior):
+                        if isinstance(m, HyperPrior) or\
+                           (isinstance(m, FixedParams) and
+                            m._all_submodels_hyperpriors()):
                             # sample it
                             m.sample(1, burnin=False,
                                      migration_prob=migration_prob)

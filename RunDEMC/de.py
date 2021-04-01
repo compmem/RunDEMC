@@ -21,7 +21,7 @@ class Proposal(object):
     and their weights.
     """
 
-    def _generate(self, pop, ref_pop, num_params, weights=None):
+    def _generate(self, pop, ref_pop, weights=None):
         raise NotImplemented("You must define this method in a subclass.")
 
     def generate(self, pop, ref_pop=None, weights=None, fixed=None):
@@ -43,7 +43,6 @@ class Proposal(object):
         # generate values for non-fixed params
         proposal[:, ~fixed] = self._generate(pop[:, ~fixed],
                                              ref_pop[:, ~fixed],
-                                             pop.shape[1],
                                              weights=weights)
 
         # return the new proposal
@@ -61,31 +60,32 @@ class DE(Proposal):
     def __init__(self, CR=1.0, gamma=None,
                  gamma_best=0.0, epsilon=.0001,
                  rand_base=False):
+        # set the crossover
         self._CR = CR
+
+        # set gamma
+        if gamma is None:
+            ## based on original DEMC paper
+            #gamma = 2.38 / np.sqrt(2*num_params)
+            gamma = (0.4, 1.0)
+        if np.isscalar(gamma):
+            gamma = (gamma, gamma)
         self._gamma = gamma
+        
         if gamma_best is None:
-            gamma_best = (0.5, 1.0)
+            gamma_best = (0.4, 1.0)
         elif np.isscalar(gamma_best):
             gamma_best = (gamma_best, gamma_best)
         self._gamma_best = gamma_best
         self._rand_base = rand_base
         self._epsilon = epsilon
 
-    def _generate(self, pop, ref_pop, num_params, weights=None):
+    def _generate(self, pop, ref_pop, weights=None):
         """
         Generate a standard differential evolution proposal.
         """
         # allocate for new proposal
         proposal = np.ones_like(pop) * np.nan
-
-        # set gamma from pop if needed
-        if self._gamma is None:
-            # based on original DEMC paper
-            gamma = 2.38 / np.sqrt(2*num_params)
-        else:
-            gamma = self._gamma
-        if np.isscalar(gamma):
-            gamma = (gamma, gamma)
 
         # process the weights
         if weights is not None:
@@ -121,7 +121,7 @@ class DE(Proposal):
         for p in range(len(proposal)):
             # get current gammas
             gamma_best = np.random.uniform(*self._gamma_best)
-            cur_gamma = np.random.uniform(*gamma)
+            gamma = np.random.uniform(*self._gamma)
 
             # pick best particle probabilistically
             # (works possibly too well)
@@ -133,7 +133,7 @@ class DE(Proposal):
 
             # DE_local_to_best
             proposal[p] = (pop[base_inds[p]] +
-                           (cur_gamma * (ref_pop[ind[0]] -
+                           (gamma * (ref_pop[ind[0]] -
                                      ref_pop[ind[1]])) +
                            np.random.randn(pop.shape[1])*self._epsilon)
             if gamma_best > 0.0:
