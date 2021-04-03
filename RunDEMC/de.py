@@ -30,7 +30,7 @@ class Proposal(object):
             fixed = np.zeros(pop.shape[1], dtype=np.bool)
 
         # process the ref_pop
-        if ref_pop is None:
+        if ref_pop is None or len(ref_pop) == 0:
             # just use the pop
             ref_pop = pop.copy()
 

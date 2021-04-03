@@ -191,6 +191,7 @@ class Hierarchy(object):
 
             # get var to save max submodel params for setting DE
             max_submodel_params = 0
+            total_submodels = 0
             
             # loop over the models looking for fixed params
             m_args = []
@@ -203,6 +204,7 @@ class Hierarchy(object):
                         p_inds.append((i, m._submodel_params.index(p)))
                         if len(n._params) > max_submodel_params:
                             max_submodel_params = len(n._params)
+                        total_submodels += 1
 
                 if len(p_inds) > 0:
                     # we have a match, so add the vals

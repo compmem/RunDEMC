@@ -761,7 +761,7 @@ def _calc_log_prior(*props, priors, cur_split=None):
         
     # loop over params
     for i, prior in enumerate(priors):
-        if hasattr(prior, "pdf"):
+        if hasattr(prior, "logpdf"):
             # it's not a fixed value
             # pick props and make sure to pass all
             # into pdf at the same time
@@ -798,6 +798,10 @@ def _evolve(prop_gen=None, parts_ind=None, split_ind=None,
     # loop over two halves
     kept = np.zeros(len(particles), dtype=np.bool)
     for cur_split in [split_ind, ~split_ind]:
+        # skip the split if there are no chains in it
+        if cur_split.sum() == 0:
+            continue
+        
         # generate new proposals
         proposal = prop_gen(particles[cur_split],
                             particles[~cur_split],
