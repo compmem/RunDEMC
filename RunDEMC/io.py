@@ -26,14 +26,14 @@ def make_dict(model, burnin=None, **kwargs):
                 **kwargs)
 
 
-def arviz_dict(model, burnin=0):
+def arviz_dict(model, burnin=0, step=1):
     """Generate a dict that can be used to create an ArviZ data structure."""
-    return dict(posterior={model.param_names[i]: model.particles[burnin:,:,i].T 
+    return dict(posterior={model.param_names[i]: model.particles[burnin::step,:,i].T 
                            for i in range(len(model.param_names))}, 
-                sample_stats={'acceptance_rate': model.accept_rate[burnin:].T,
-                              'times': model.times[burnin:].T,
+                sample_stats={'acceptance_rate': model.accept_rate[burnin::step].T,
+                              'times': model.times[burnin::step].T,
                 },
-                log_likelihood={model._name: model.weights[burnin:].T},
+                log_likelihood={model._name: model.weights[burnin::step].T},
                 #prior={'log_prior':(model.weights-model.log_likes)[burnin:].T}
                 )
 
