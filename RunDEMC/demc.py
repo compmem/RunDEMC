@@ -55,6 +55,15 @@ class Param(object):
         self.display_name = display_name
 
         self.transform = transform
+
+        # see if can infer inv transform if necessary
+        if transform is not None and inv_transform is None:
+            if transform == invlogit:
+                # we know we can do logit
+                inv_transform = logit
+            elif transform == np.exp:
+                # it's log
+                inv_transform = np.log            
         self.inv_transform = inv_transform
 
         # hidden variable to indicate whether this param is fixed at
@@ -234,8 +243,7 @@ class Model(object):
 
             # pull the particles and apply inverse transform as needed
             particles = _apply_param_transform(m['particles'],
-                                               self._get_transforms(),
-                                               inverse=True)
+                                               self._get_transforms(inverse=True))
 
             # must turn everything into lists
             self._particles = [particles[i]
@@ -246,7 +254,7 @@ class Model(object):
                              for i in range(len(particles))]
             self._times = [m['times'][i]
                            for i in range(len(particles))]
-            if has_key(m, 'accept_rate'):
+            if 'accept_rate' in m:
                 self._accept_rate = [m['accept_rate'][i]
                                      for i in range(len(particles))]
             else:
@@ -484,9 +492,12 @@ class Model(object):
 
         self._needs_new_generation = True
 
-    def _get_transforms(self):
+    def _get_transforms(self, inverse=False):
         # loop over priors and get the transforms
-        return [p.transform for p in self._params]
+        if inverse:
+            return [p.inv_transform for p in self._params]
+        else:
+            return [p.transform for p in self._params]
 
     def _get_fixed(self):
         fixed = np.zeros(len(self._params), dtype=np.bool)
@@ -628,32 +639,12 @@ def _init_chains(priors, num_chains, initial_zeros_ok=False, verbose=False,
             'times': times}
 
 
-def _apply_param_transform(pop, transforms,
-                           inverse_transforms=None, inverse=False):
+def _apply_param_transform(pop, transforms):
     pop = pop.copy()
-    if inverse_transforms is None:
-        inverse_transforms = [None]*len(transforms)
     for i, transform in enumerate(transforms):
         if transform:
-            if not inverse:
-                # just go in forward direction
-                pop[..., i] = transform(pop[..., i])
-            else:
-                # going in inverse direction
-                if inv_transform[i]:
-                    invtrans = inv_transform[i]
-                else:
-                    # see if figure out
-                    if transform == invlogit:
-                        # we know we can do logit
-                        invtrans = logit
-                    elif transform == np.exp:
-                        # it's log
-                        invtrans = np.log
-                    else:
-                        raise ValueError("Could not infer inverse transform.")
-                # apply the inverse transform
-                pop[..., i] = invtrans(pop[..., i])
+            # apply the transform
+            pop[..., i] = transform(pop[..., i])
     return pop
 
 
