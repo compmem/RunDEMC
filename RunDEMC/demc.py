@@ -34,43 +34,8 @@ except ImportError:
 from .de import DE
 from .io import load_results
 from .dists import invlogit, logit
-
-
-class Param(object):
-    """
-    Parameter for use with RunDEMC.
-    """
-
-    def __init__(self, name, prior=None, init_prior=None,
-                 display_name=None, transform=None, inv_transform=None):
-        self.name = name
-        self.prior = prior
-
-        if init_prior is None:
-            init_prior = self.prior
-        self.init_prior = init_prior
-
-        if display_name is None:
-            display_name = self.name
-        self.display_name = display_name
-
-        self.transform = transform
-
-        # see if can infer inv transform if necessary
-        if transform is not None and inv_transform is None:
-            if transform == invlogit:
-                # we know we can do logit
-                inv_transform = logit
-            elif transform == np.exp:
-                # it's log
-                inv_transform = np.log            
-        self.inv_transform = inv_transform
-
-        # hidden variable to indicate whether this param is fixed at
-        # this level
-        self._fixed = False
-        self._fixed_info = None
-
+from .param import Param, _apply_param_transform
+from .gibbs import NormalHyperPrior
 
 class Model(object):
     """
@@ -213,7 +178,9 @@ class Model(object):
             self._parallel = Parallel(n_jobs=n_jobs, backend=backend)
 
         # see if we're a fixed or hyper
-        if isinstance(self, FixedParams) or isinstance(self, HyperPrior):
+        if isinstance(self, FixedParams) or \
+           isinstance(self, HyperPrior) or \
+           isinstance(self, NormalHyperPrior):
             self._is_fixed_or_hyper = True
         else:
             self._is_fixed_or_hyper = False
@@ -515,7 +482,8 @@ def _trimmed_priors(params):
     "Trim HyperPrior to only have most recent info"
     trimmed = []
     for p in params:
-        if isinstance(p.prior, HyperPrior):
+        if isinstance(p.prior, HyperPrior) or \
+           isinstance(p.prior, NormalHyperPrior):
             tp = _HyperPriorSnapshot(p.prior)
             trimmed.append(tp)
         else:
@@ -527,7 +495,8 @@ def _trimmed_init_priors(params):
     "Trim HyperPrior and FixedParam to only have most recent info"
     trimmed = []
     for p in params:
-        if isinstance(p.prior, HyperPrior):
+        if isinstance(p.init_prior, HyperPrior) or \
+           isinstance(p.init_prior, NormalHyperPrior):
             tp = _HyperPriorSnapshot(p.init_prior)
             trimmed.append(tp)
         elif p._fixed:
@@ -580,7 +549,8 @@ def _init_chains(priors, num_chains, initial_zeros_ok=False, verbose=False,
             if hasattr(p, "rvs"):
                 # generate with rvs
                 if isinstance(p, HyperPrior) or \
-                   isinstance(p, _HyperPriorSnapshot):
+                   isinstance(p, _HyperPriorSnapshot) or \
+                   isinstance(p, NormalHyperPrior):
                     # must provide the cur_split
                     prop.append(p.rvs((ind.sum(), 1), ind))
                 else:
@@ -637,15 +607,6 @@ def _init_chains(priors, num_chains, initial_zeros_ok=False, verbose=False,
     return {'particles': pop, 'log_likes': log_likes,
             'weights': weights, 'accept_rate': accept_rate,
             'times': times}
-
-
-def _apply_param_transform(pop, transforms):
-    pop = pop.copy()
-    for i, transform in enumerate(transforms):
-        if transform:
-            # apply the transform
-            pop[..., i] = transform(pop[..., i])
-    return pop
 
 
 def _calc_log_likes(pop, like_fun, like_args, cur_split=None,
@@ -763,7 +724,8 @@ def _calc_log_prior(*props, priors, cur_split=None):
             # ignore divide by zero in log here
             with np.errstate(divide='ignore'):
                 if isinstance(prior, _HyperPriorSnapshot) or \
-                   isinstance(prior, HyperPrior):
+                   isinstance(prior, HyperPrior) or \
+                   isinstance(prior, NormalHyperPrior):
                     # must provide cur_split
                     log_pdf = prior.logpdf(p, cur_split)
                 else:
@@ -875,7 +837,8 @@ def _evolve(prop_gen=None, parts_ind=None, split_ind=None,
 class _HyperPriorSnapshot():
     """Wrapper for HyperPrior to avoid parallelizing large objects"""
     def __init__(self, hp):
-        self._pop = hp._particles[-1]
+        self._pop = _apply_param_transform(hp._particles[-1],
+                                           hp._get_transforms())
         self._dist = hp._dist
         self._num_chains = len(self._pop)
         
@@ -1004,7 +967,8 @@ class HyperPrior(Model):
                 cur_split = np.random.randint(0, self._num_chains, len(vals))
 
         # generate the pdf using the likelihood func
-        pop = self._particles[-1][cur_split]
+        pop = _apply_param_transform(self._particles[-1][cur_split],
+                                     self._get_transforms())
         args = [pop[:, i] for i in range(pop.shape[1])]
         d = self._dist(*args)
         # p = np.hstack([d.pdf(vals[:,i]) for i in range(vals.shape[1])])
@@ -1033,7 +997,8 @@ class HyperPrior(Model):
                 cur_split = np.random.randint(0, self._num_chains, len(vals))
 
         # generate the pdf using the likelihood func
-        pop = self._particles[-1][cur_split]
+        pop = _apply_param_transform(self._particles[-1][cur_split],
+                                     self._get_transforms())
         args = [pop[:, i] for i in range(pop.shape[1])]
         d = self._dist(*args)
         # p = np.hstack([d.logpdf(vals[:,i]) for i in range(vals.shape[1])])
@@ -1063,11 +1028,13 @@ class HyperPrior(Model):
 
         # generate the random vars using the likelihood func
         # pop = self._particles[-1][chains]
+        pop = _apply_param_transform(self._particles[-1],
+                                     self._get_transforms())
+        
         # r = self._dist(*(pop[:,i] for i in range(pop.shape[1]))).rvs(size[1:])
-        r = np.array([self._dist(*self._particles[-1][ind]).rvs(size[1:])
+        r = np.array([self._dist(*pop[ind]).rvs(size[1:])
                       for i, ind in enumerate(chains)])
         return r.reshape(size)
-
 
 
 class FixedParams(Model):

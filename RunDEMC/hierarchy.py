@@ -14,6 +14,7 @@ from fastprogress.fastprogress import progress_bar
 
 from .demc import Model, HyperPrior, FixedParams
 from .demc import _evolve, _trimmed_init_priors, _init_chains
+from .gibbs import NormalHyperPrior
 from .io import make_dict, gzpickle
 
 # test for joblib
@@ -53,7 +54,8 @@ class Hierarchy(object):
 
     hyper_names = property(lambda self:
                            [h._name for h in self._other_models
-                            if isinstance(h, HyperPrior)],
+                            if isinstance(h, HyperPrior) or
+                            isinstance(h, NormalHyperPrior)],
                            doc="""
                            List of parameter names.
                            """)
@@ -99,7 +101,8 @@ class Hierarchy(object):
                 self._all_params.append(p)
 
             # check for HyperPrior
-            if isinstance(p.prior, HyperPrior) and \
+            if (isinstance(p.prior, HyperPrior) or
+                isinstance(p.prior, NormalHyperPrior)) and \
                p.prior not in self._hyper_priors[level]:
                 # append to hyper_priors
                 self._hyper_priors[level].append(p.prior)
@@ -337,7 +340,8 @@ class Hierarchy(object):
             try:
                 ind = self.hyper_names.index(name)
                 hmods = [h for h in self._other_models
-                         if isinstance(h, HyperPrior)]
+                         if (isinstance(h, HyperPrior) or
+                             isinstance(h, NormalHyperPrior))]
                 return hmods[ind]
             except ValueError:
                 raise ValueError("Model "+str(name)+" not found.")
@@ -380,7 +384,7 @@ class Hierarchy(object):
                     #sys.stdout.write('.')
                     #sys.stdout.flush()
                     if burnin and self._delay_hyper_burnin and \
-                       (isinstance(m, HyperPrior) or\
+                       (isinstance(m, HyperPrior) or \
                         (isinstance(m, FixedParams) and
                          m._all_submodels_hyperpriors())):
                         # skip hyper during burnin
