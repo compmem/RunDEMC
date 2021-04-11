@@ -36,6 +36,30 @@ class NormalHyperPrior(object):
                          Particles as an array.
                          """)
 
+    log_likes = property(lambda self:
+                         np.asarray(self._log_likes),
+                         doc="""
+                         Log likelihoods as an array.
+                         """)
+
+    weights = property(lambda self:
+                       np.asarray(self._weights),
+                       doc="""
+                       Weights as an array.
+                       """)
+
+    times = property(lambda self:
+                     np.asarray(self._times),
+                     doc="""
+                     Times as an array.
+                     """)
+
+    accept_rate = property(lambda self:
+                           np.asarray(self._accept_rate),
+                           doc="""
+                           Acceptance rate as an array.
+                           """)
+
     def __init__(self, name, mu, sigma, alpha, beta):
         self._name = name
         self._mu = mu
