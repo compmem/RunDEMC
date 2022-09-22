@@ -114,7 +114,7 @@ class Model(object):
         self._name = name
         self._params = params  # can't be None
         if num_chains is None:
-            num_chains = int(np.min([len(params) * 10, 100]))
+            num_chains = int(np.min([len(params) * 20, 200]))
         self._num_chains = num_chains
         self._initial_zeros_ok = initial_zeros_ok
         self._init_multiplier = 1 # init_multiplier
@@ -148,7 +148,7 @@ class Model(object):
         if burnin_proposal_gen is None:
             gamma = 2.38 / np.sqrt(2*len(self._params))
             burnin_proposal_gen = DE(gamma=gamma,
-                                     gamma_best=(.4, 1.0),
+                                     gamma_best=(.1, gamma),
                                      rand_base=True)
         self._burnin_prop_gen = burnin_proposal_gen
 
@@ -254,6 +254,9 @@ class Model(object):
         # say we've initialized
         self._initialized = True
 
+        if self._verbose:
+            sys.stdout.write('\n')
+            sys.stdout.flush()
 
     def call_calc_log_likes(self, pop, cur_split=None):
         # use this to clean up code later
