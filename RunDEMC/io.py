@@ -34,7 +34,7 @@ def arviz_dict(model, burnin=0, step=1):
                               'times': model.times[burnin::step].T,
                 },
                 log_likelihood={model._name: model.weights[burnin::step].T},
-                #prior={'log_prior':(model.weights-model.log_likes)[burnin:].T}
+                prior={'log_prior':(model.weights-model.log_likes)[burnin:].T}
                 )
 
 
