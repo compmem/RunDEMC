@@ -41,26 +41,18 @@ class PDA():
     cond_var : str or None
         Column name containing the condition variable.
 
-    lower : float or None
-        Lower bound on the continuous data. If None will be determined
-        from the observed data.
-
-    upper : float or None
-        Upper bound on the continuous data. If None will be determined
-        from the observed data.
-
-    nbins : int
-        Number of bins in the kernel density estimation. 
+    nbins : int or None
+        Number of bins in the kernel density estimation.
         Powers of 2 are good here and large numbers reduce interpolation
-        errors.
+        errors. None will let FFTKDE decide.
 
     min_obs : int
         Minimum number of matching sims required per set of observations.
-        
+
     transform : bool
         Whether to transform both the observed and simulated continuous
         data via a Box--Cox transformation before applying the kernel
-        density estimation. This can help improve KDE performance with 
+        density estimation. This can help improve KDE performance with
         skewed distributions, such as reaction times.
 
     shift_start : float or None
@@ -74,18 +66,19 @@ class PDA():
     kernel : str
         Type of kernel to use for the kernel density estimation of continuous
         data. See options of FFTKDE from KDEpy.
-        Default is 'epa' for Epanechnikov.
+        Default is 'gaussian' for a Gaussian kernel.
 
     bw : str
         Method fo rcalculating the bandwidth for the kernel density estimation.
         See options for the FFTKDE from KDEpy.
-        Default is 'silverman' for Silverman's Rule of Thumb.
+        Default is 'silverman' for Silverman's Rule of Thumb, but it's worth
+        trying 'ISJ' for Improved Sheather Jones for multimodal data.
 
     """
     def __init__(self, obs, cat_var=None, cont_var=None, cond_var=None,
-                 lower=None, upper=None, nbins=2048, min_obs=3,
+                 nbins=None, min_obs=3,
                  transform=None, shift_start=0.0, min_shift=None,
-                 kernel='epa', bw='silverman'):
+                 kernel='gaussian', bw='silverman'):
         # save the input vars
         self._obs = obs
         self._min_obs = min_obs
@@ -95,26 +88,15 @@ class PDA():
         self._boxcox = transform
         self._shift_start = shift_start
         self._min_shift = min_shift
-        self._lower = lower
-        self._upper = upper
         self._nbins = nbins
         self._kernel = kernel
         self._bw = bw
 
         # learn boxcox transformation if desired
         if cont_var is not None:
-            # set up the kde
-            #self._kde = FFTKDE(kernel=kernel, bw=bw)
-
-            # set the lower and upper if needed
-            if self._lower is None:
-                self._lower = obs[self._cont_var].min()
-            if self._upper is None:
-                self._upper = obs[self._cont_var].max()
-
             if self._boxcox:
                 # learn boxcox param over all data
-                if shift_start == None:
+                if shift_start is None:
                     self._lambdax = best_boxcox_lambdax(obs[self._cont_var],
                                                         lambdax=0.0,
                                                         shift=shift_start)
@@ -125,15 +107,7 @@ class PDA():
                                                                      lambdax=0.0,
                                                                      shift=shift_start,
                                                                      min_shift=min_shift)
-                # apply the boxcox to the upper and lower bounds
-                self._lower = boxcox(np.array([self._lower]),
-                                     self._lambdax, self._shift)[0]
-                self._upper = boxcox(np.array([self._upper]),
-                                     self._lambdax, self._shift)[0]
 
-            # set the xvals for evaluating the kde
-            self._xvals = np.linspace(self._lower, self._upper, self._nbins)
-          
         # get unique categories
         if cat_var is not None:
             self._ucat = np.unique(obs[self._cat_var])
@@ -194,26 +168,38 @@ class PDA():
 
                 # process continuous var
                 if self._cont_var is not None:
-                    # apply boxcox if requested
-                    sdat = sims[self._cont_var][cc_ind]
+                    # pull the matching sdat and odat
                     odat = self._obs[self._cont_var][o_cc_ind]
+                    sdat = sims[self._cont_var][cc_ind]
+                    if np.all((np.diff(sdat)==0)):
+                        # must have some variability in the cont variable
+                        # for the simulated data, or it can't work
+                        log_like = -np.inf
+                        break
+
+                    # apply boxcox if requested
                     if self._boxcox:
                         sdat = boxcox(sdat, self._lambdax, self._shift)
                         odat = boxcox(odat, self._lambdax, self._shift)
 
                     # calculate the probability density approx
-                    pp = np.interp(odat, self._xvals,
-                                   FFTKDE(kernel=self._kernel,
-                                          bw=self._bw).fit(sdat).evaluate(self._xvals))
-                    #pp, xx = kdensity(sdat,
-                    #                  extrema=(0,2.0),
-                    #                  xx=odat)
+                    try:
+                        # use the autogrid from KDE
+                        gps, yval_pdf_e = FFTKDE(kernel=self._kernel,
+                                                 bw=self._bw).fit(sdat).evaluate()
 
-                    # scale the density by proportion
-                    pp *= float(len(sdat))/nsims
+                        # will return small values for data not in the grid
+                        pp = np.interp(odat, gps, yval_pdf_e)
 
-                    # add to the log likes
-                    log_like += np.log(pp).sum()
+                        # scale the density by proportion
+                        pp *= float(len(sdat))/nsims
+
+                        # add to the log likes
+                        log_like += np.log(pp).sum()
+                    except ValueError:
+                        # likely had an issue with the KDE
+                        log_like = -np.inf
+                        break
                 else:
                     # just process as proportion of responses
                     # log probability of observing that response
@@ -224,6 +210,6 @@ class PDA():
             # dont bother continuing to loop if we already have zero like
             if log_like == -np.inf:
                 break
-            
+
         # return the log-like
         return log_like
