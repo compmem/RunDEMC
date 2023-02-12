@@ -9,7 +9,12 @@
 
 
 # global imports
-from numba import njit
+try:
+    from numba import njit
+except ImportError:
+    def njit(func):
+        return func
+        
 import numpy as np
 import sys
 import random
