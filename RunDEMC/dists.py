@@ -144,15 +144,9 @@ def trunc_normal(mean=0.0, std=1.0, lower=0.0, upper=1.0):
     b = (np.array(upper) - np.array(mean)) / np.array(std)
     return my_tn(a, b, loc=mean, scale=std)
 
-from scipy.stats import rv_continuous
+
 def uniform(lower=0.0, upper=1.0):
-    class _uniform(rv_continuous):
-        def _logpdf(self, x):
-            pass
-
-    uniform = _uniform(name='uniform') 
-
-    return uniform(loc=lower, scale=upper - lower)
+    return dists.uniform(loc=lower, scale=upper - lower)
 
 
 def beta(alpha=.5, beta=.5):
