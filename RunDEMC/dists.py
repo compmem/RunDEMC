@@ -50,6 +50,8 @@ _norm_pdf_C = np.sqrt(2*np.pi)
 _norm_pdf_logC = np.log(_norm_pdf_C)
 class normal:
     def __init__(self, mean=0.0, std=1.0):
+        assert np.all(std > 0)
+
         self.mean = mean
         self.std = std
         self.rng = default_rng()
@@ -169,6 +171,8 @@ def trunc_normal(mean=0.0, std=1.0, lower=0.0, upper=1.0):
 
 class uniform:
     def __init__(self, lower=0.0, upper=1.0):
+        assert np.all(lower < upper)
+
         self.lower = lower
         self.upper = upper
         self.rng = default_rng()
@@ -191,6 +195,9 @@ class uniform:
 
 class beta:
     def __init__(self, alpha=.5, beta=.5):
+        assert np.all(alpha > 0)
+        assert np.all(beta > 0)
+
         self.alpha = alpha
         self.beta = beta
         self.rng = default_rng()
@@ -217,6 +224,9 @@ class gamma:
     """
 
     def __init__(self, alpha=1.0, beta=1.0):
+        assert np.all(alpha > 0)
+        assert np.all(beta > 0)
+        
         self.alpha = alpha
         self.beta = beta
         self.rng = default_rng()
@@ -244,6 +254,9 @@ class invgamma:
     """
 
     def __init__(self, alpha=1.0, beta=1.0):
+        assert np.all(alpha > 0)
+        assert np.all(beta > 0)
+
         self.alpha = alpha
         self.beta = beta
         self.rng = default_rng()
@@ -269,6 +282,8 @@ class invgamma:
 
 class exp:
     def __init__(self, lam=1.0):
+        assert np.all(lam > 0)
+
         self.lam = lam
         self.rng = default_rng()
         self._log_lam = log(self.lam)
@@ -287,6 +302,8 @@ class exp:
 
 class poisson:
     def __init__(self, lam=1.0):
+        assert np.all(lam > 0)
+
         self.lam = lam
         self.rng = default_rng()
         
@@ -304,6 +321,8 @@ class poisson:
 
 class laplace:
     def __init__(self, loc=0.0, diversity=1.0):
+        assert np.all(diversity > 0)
+
         self.loc = loc
         self.diversity = diversity
         self.rng = default_rng()
@@ -325,6 +344,9 @@ class laplace:
 
 class students_t:
     def __init__(self, mean=0, std=1.0, df=1.0):
+        assert np.all(std > 0)
+        assert np.all(df > 1)
+
         self.mean = mean
         self.std = std
         self.df = df
@@ -352,6 +374,8 @@ def noncentral_t(mean=0, std=1.0, df=1.0, nc=0.0):
 
 class halfcauchy:
     def __init__(self, scale=1.0, loc=0.0):
+        assert np.all(scale > 0)
+
         self.scale = scale
         self.loc = loc
         self.rng = default_rng()
