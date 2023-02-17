@@ -10,6 +10,7 @@
 
 import sys
 import numpy as np
+from numpy.random import default_rng
 from fastprogress.fastprogress import progress_bar
 
 from .demc import Model, HyperPrior, FixedParams
@@ -399,7 +400,7 @@ class Hierarchy(object):
                     jobs = []
                     for m in self._models:
                         # check if migrate
-                        if np.random.rand() < migration_prob:
+                        if default_rng().random() < migration_prob:
                             # migrate, which is deterministic and done in place
                             m._migrate()
 

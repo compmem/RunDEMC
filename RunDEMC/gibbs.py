@@ -8,6 +8,8 @@
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ##
 
 import numpy as np
+from numpy.random import default_rng
+
 import time
 
 from .dists import normal, invgamma
@@ -172,7 +174,7 @@ class NormalHyperPrior(object):
                 cur_split = np.arange(self._num_chains)
             else:
                 # pick randomly
-                cur_split = np.random.randint(0, self._num_chains, len(vals))
+                cur_split = default_rng().integers(0, self._num_chains, len(vals))
 
         # generate the pdf using the likelihood func
         pop = _apply_param_transform(self._particles[-1][cur_split],
@@ -197,7 +199,7 @@ class NormalHyperPrior(object):
                 cur_split = np.arange(self._num_chains)
             else:
                 # pick randomly
-                cur_split = np.random.randint(0, self._num_chains, len(vals))
+                cur_split = default_rng().integers(0, self._num_chains, len(vals))
 
         # generate the pdf using the likelihood func
         pop = _apply_param_transform(self._particles[-1][cur_split],
@@ -223,7 +225,7 @@ class NormalHyperPrior(object):
             chains = np.arange(num_chains)[cur_split]
         else:
             # pick randomly
-            chains = np.random.randint(0, num_chains, size[0])
+            chains = default_rng().integers(0, num_chains, size[0])
 
         # generate the random vars using the likelihood func
         # pop = self._particles[-1][chains]

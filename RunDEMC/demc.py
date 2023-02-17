@@ -10,6 +10,7 @@
 
 # global imports
 import numpy as np
+from numpy.random import default_rng
 import sys
 import random
 import time
@@ -288,7 +289,7 @@ class Model(object):
         
         if self._rand_split:
             # randomize the indices
-            all_ind = np.random.permutation(num_particles)
+            all_ind = default_rng().permutation(num_particles)
         else:
             all_ind = np.arange(num_particles)
 
@@ -300,7 +301,7 @@ class Model(object):
 
     def _migrate(self):
         # pick which items will migrate
-        num_to_migrate = np.random.random_integers(2, self._num_chains)
+        num_to_migrate = default_rng().integers(2, self._num_chains)
         to_migrate = random.sample(
             list(range(self._num_chains)), num_to_migrate)
 
@@ -328,7 +329,7 @@ class Model(object):
             mh_prob = np.exp(log_diff)
             if np.isnan(mh_prob):
                 mh_prob = 0.0
-            keep = (mh_prob - np.random.rand()) > 0.0
+            keep = (mh_prob - default_rng().random()) > 0.0
             if keep:
                 keepers.append({'ind': j,
                                 'particle': self._particles[-1][i],
@@ -362,7 +363,7 @@ class Model(object):
         else:
             progress = range(num_iter)
         for i in progress:
-            if np.random.rand() < migration_prob:
+            if default_rng().random() < migration_prob:
                 # migrate, which is deterministic and done in place
                 # if self._verbose:
                 #     sys.stdout.write('x ')
@@ -812,7 +813,7 @@ def _evolve(prop_gen=None, parts_ind=None, split_ind=None,
             prev_weights = prev_log_likes
 
         # calc acceptance in log space
-        keep = np.log(np.random.rand(len(log_diff))) < log_diff
+        keep = np.log(default_rng().random(len(log_diff))) < log_diff
 
         # handle much greater than one
         #log_diff[log_diff > 0.0] = 0.0
@@ -820,7 +821,7 @@ def _evolve(prop_gen=None, parts_ind=None, split_ind=None,
         # now exp so we can get the other probs
         # mh_prob = np.exp(log_diff)
         # mh_prob[np.isnan(mh_prob)] = 0.0
-        # keep = (mh_prob - np.random.rand(len(mh_prob))) > 0.0
+        # keep = (mh_prob - default_rng().random(len(mh_prob))) > 0.0
 
         # modify the relevant particles
         # use mask the mask approach
@@ -891,7 +892,7 @@ class _HyperPriorSnapshot():
             chains = np.arange(self._num_chains)
         else:
             # pick randomly
-            chains = np.random.randint(0, self._num_chains, size[0])
+            chains = default_rng().integers(0, self._num_chains, size[0])
 
         # generate the random vars using the likelihood func
         # pop = self._particles[-1][chains]
@@ -967,7 +968,7 @@ class HyperPrior(Model):
                 cur_split = np.arange(self._num_chains)
             else:
                 # pick randomly
-                cur_split = np.random.randint(0, self._num_chains, len(vals))
+                cur_split = default_rng().integers(0, self._num_chains, len(vals))
 
         # generate the pdf using the likelihood func
         pop = _apply_param_transform(self._particles[-1][cur_split],
@@ -997,7 +998,7 @@ class HyperPrior(Model):
                 cur_split = np.arange(self._num_chains)
             else:
                 # pick randomly
-                cur_split = np.random.randint(0, self._num_chains, len(vals))
+                cur_split = default_rng().integers(0, self._num_chains, len(vals))
 
         # generate the pdf using the likelihood func
         pop = _apply_param_transform(self._particles[-1][cur_split],
@@ -1027,7 +1028,7 @@ class HyperPrior(Model):
             chains = np.arange(num_chains)[cur_split]
         else:
             # pick randomly
-            chains = np.random.randint(0, num_chains, size[0])
+            chains = default_rng().integers(0, num_chains, size[0])
 
         # generate the random vars using the likelihood func
         # pop = self._particles[-1][chains]
