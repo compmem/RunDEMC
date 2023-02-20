@@ -345,7 +345,7 @@ class laplace:
 class students_t:
     def __init__(self, mean=0, std=1.0, df=1.0):
         assert np.all(std > 0)
-        assert np.all(df > 1)
+        assert np.all(df > 0)
 
         self.mean = mean
         self.std = std
