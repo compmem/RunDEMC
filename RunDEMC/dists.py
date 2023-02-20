@@ -261,11 +261,10 @@ class invgamma:
         self.beta = beta
         self.rng = default_rng()
 
-        self._last_term = log(beta) - gammaln(self.alpha)
-        self._theta = 1 / beta
+        self._last_term = -gammaln(self.alpha) - np.log(self.beta)
 
     def logpdf(self, x):
-        y = x*self.beta
+        y = x/self.beta
         with np.errstate(divide='warn', invalid='warn'):
             return np.where(x > 0, -(self.alpha+1) * np.log(y) - 
                             np.divide(1.0, y, out=np.zeros_like(y, dtype=np.float64), where=(y!=0.))
@@ -277,7 +276,7 @@ class invgamma:
     def rvs(self, size=1, random_state=None):
         if random_state is None:
             random_state = self.rng
-        return 1. / random_state.gamma(self.alpha, self._theta, size)
+        return 1. / random_state.gamma(self.alpha, self.beta, size)
 
 
 class exp:
@@ -297,8 +296,7 @@ class exp:
     def rvs(self, size=1, random_state=None):
         if random_state is None:
             random_state = self.rng
-
-        return random_state.exponential(self.lam, size)
+        return random_state.exponential(1./self.lam, size)
 
 class poisson:
     def __init__(self, lam=1.0):

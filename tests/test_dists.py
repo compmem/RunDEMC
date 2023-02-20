@@ -79,7 +79,7 @@ class TestDists(unittest.TestCase):
         betas = [3, 2, 1]
         
         for alpha, beta in zip(alphas, betas):
-            scipy = stats.invgamma(alpha, scale=1/beta)
+            scipy = stats.invgamma(alpha, scale=beta)
             demc = dists.invgamma(alpha, beta)
             self.dist_assertions(scipy, demc, test_rvs=False)
 
@@ -89,7 +89,7 @@ class TestDists(unittest.TestCase):
         for lam in lams:
             scipy = stats.expon(scale=1. / lam)
             demc = dists.exp(lam)
-            self.dist_assertions(scipy, demc, test_rvs=False)
+            self.dist_assertions(scipy, demc)
 
     def test_poisson(self):
         lams = [1, 2, 3]
