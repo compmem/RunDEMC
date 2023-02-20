@@ -119,35 +119,35 @@ class DE(Proposal):
 
         # get the permuted base_inds
         if _rand_base:
-            base_inds = default_rng().permutation(len(proposal))
+            base_inds = np.random.permutation(len(proposal))
         else:
             base_inds = np.arange(len(proposal))
 
         # loop generating proposals
         for p in range(len(proposal)):
             # get current gammas
-            gamma_best = default_rng().uniform(*_gamma_best)
-            gamma = default_rng().uniform(*_gamma)
+            gamma_best = np.random.uniform(*_gamma_best)
+            gamma = np.random.uniform(*_gamma)
 
             # pick best particle probabilistically
             # (works possibly too well)
             if gamma_best > 0.0:
-                best_ind = np.nonzero(default_rng().random() < cum_w_sum)[0][0]
+                best_ind = np.nonzero(np.random.rand() < cum_w_sum)[0][0]
 
             # pick two from ref pop
-            ind = default_rng().choice(ref_ind, size=2, replace=False)
+            ind = np.random.choice(ref_ind, size=2, replace=False)
 
             # DE_local_to_best
             proposal[p] = (pop[base_inds[p]] +
                            (gamma * (ref_pop[ind[0]] -
                                      ref_pop[ind[1]])) +
-                           default_rng().standard_normal(pop.shape[1])*_epsilon)
+                           np.random.randn(pop.shape[1])*_epsilon)
             if gamma_best > 0.0:
                 proposal[p] += (gamma_best *
                                 (pop[best_ind] - pop[base_inds[p]]))
 
         # do crossover
-        xold_ind = default_rng().random(*pop.shape) > _CR
+        xold_ind = np.random.rand(*pop.shape) > _CR
         proposal.ravel()[xold_ind.ravel()] = pop.ravel()[xold_ind.ravel()]
 
         return proposal
