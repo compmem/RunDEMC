@@ -7,9 +7,12 @@
 #
 ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ##
 
-import numpy as np
+import scipy.stats.distributions
 import scipy.stats.distributions as dists
-from scipy.special import gammaln
+from scipy.stats._distn_infrastructure import argsreduce
+from scipy.special import gammaln, betaln, xlogy, xlog1py, log1p
+from numpy.random import default_rng
+import numpy as np
 
 
 def logit(x):
@@ -42,12 +45,33 @@ def multinomial(xs, ps):
     return np.exp(result)
 
 
-def normal(mean=0.0, std=1.0):
-    return dists.norm(loc=mean, scale=std)
+_log_half = np.log(.5)
+_norm_pdf_C = np.sqrt(2*np.pi)
+_norm_pdf_logC = np.log(_norm_pdf_C)
+class normal:
+    def __init__(self, mean=0.0, std=1.0):
+        assert np.all(std > 0)
+
+        self.mean = mean
+        self.std = std
+        self.rng = default_rng()
+
+        self._second_term = -_norm_pdf_logC - log(std)
+
+    def logpdf(self, x):
+        y = (x - self.mean) / self.std
+        return -y**2 / 2.0 + self._second_term
+
+    def pdf(self, x):
+        return np.exp(self.logpdf(x))
+
+    def rvs(self, size=1, random_state=None):
+        if random_state is None:
+            random_state = self.rng
+
+        return random_state.normal(self.mean, self.std, size)
 
 
-import scipy.stats.distributions
-from scipy.stats._distn_infrastructure import argsreduce
 _norm_cdf = scipy.stats.distributions._continuous_distns._norm_cdf
 _norm_sf = scipy.stats.distributions._continuous_distns._norm_sf
 _norm_isf = scipy.stats.distributions._continuous_distns._norm_isf
@@ -127,7 +151,7 @@ def _pdf_fixed(self, x, *args, **kwds):
         ccond = cond.copy()
         ccond.shape = goodargs[0].shape
         output[cond] = (self._pdf(*goodargs) / scale)[ccond]
-        #place(output, cond, self._pdf(*goodargs) / scale)
+        # place(output, cond, self._pdf(*goodargs) / scale)
     if output.ndim == 0:
         return output[()]
     return output
@@ -145,50 +169,229 @@ def trunc_normal(mean=0.0, std=1.0, lower=0.0, upper=1.0):
     return my_tn(a, b, loc=mean, scale=std)
 
 
-def uniform(lower=0.0, upper=1.0):
-    return dists.uniform(loc=lower, scale=upper - lower)
+class uniform:
+    def __init__(self, lower=0.0, upper=1.0):
+        assert np.all(lower < upper)
+
+        self.lower = lower
+        self.upper = upper
+        self.rng = default_rng()
+
+        self._size = upper - lower
+        self._inv_size = 1 / self._size
+        self._log_size = log(self._size)
+
+    def logpdf(self, x):
+        return np.where((x >= self.lower) & (x <= self.upper), -self._log_size, np.NINF)
+
+    def pdf(self, x):
+        return np.where((x >= self.lower) & (x <= self.upper), self._inv_size, 0)
+
+    def rvs(self, size=1, random_state=None):
+        if random_state is None:
+            random_state = self.rng
+        return random_state.uniform(self.lower, self.upper, size)
 
 
-def beta(alpha=.5, beta=.5):
-    return dists.beta(alpha, beta)
+class beta:
+    def __init__(self, alpha=.5, beta=.5):
+        assert np.all(alpha > 0)
+        assert np.all(beta > 0)
+
+        self.alpha = alpha
+        self.beta = beta
+        self.rng = default_rng()
+
+        self._neg_betaln = -betaln(self.alpha, self.beta)
+    
+    def logpdf(self, x):
+        return np.where((x >= 0) & (x <= 1), xlog1py(self.beta - 1.0, -x) + xlogy(self.alpha - 1.0, x) + self._neg_betaln, np.NINF)
+
+    def pdf(self, x):
+        return np.where((x >= 0) & (x <= 1), np.exp(self.logpdf(x)), 0)
+
+    def rvs(self, size=1, random_state=None):
+        if random_state is None:
+            random_state = self.rng
+
+        return random_state.beta(self.alpha, self.beta, size)
 
 
-def gamma(alpha=1.0, beta=1.0):
+class gamma:
     """
     alpha = k
     beta = 1/theta
     """
-    return dists.gamma(alpha, scale=1. / beta)
+
+    def __init__(self, alpha=1.0, beta=1.0):
+        assert np.all(alpha > 0)
+        assert np.all(beta > 0)
+        
+        self.alpha = alpha
+        self.beta = beta
+        self.rng = default_rng()
+
+        self._second_term = -gammaln(self.alpha) + log(beta)
+        self._theta = 1 / beta
+
+    def logpdf(self, x):
+        y = x*self.beta
+        return np.where(x >= 0, xlogy(self.alpha-1.0, y) - y + self._second_term, np.NINF)
+
+    def pdf(self, x):
+        return np.where(x >= 0, np.exp(self.logpdf(x)), 0)
+
+    def rvs(self, size=1, random_state=None):
+        if random_state is None:
+            random_state = self.rng
+        return random_state.gamma(self.alpha, self._theta, size)
 
 
-def invgamma(alpha=1.0, beta=1.0):
+class invgamma:
     """
+    alpha = k
+    beta = 1/theta
     """
-    return dists.invgamma(alpha, scale=beta)
+
+    def __init__(self, alpha=1.0, beta=1.0):
+        assert np.all(alpha > 0)
+        assert np.all(beta > 0)
+
+        self.alpha = alpha
+        self.beta = beta
+        self.rng = default_rng()
+
+        self._last_term = -gammaln(self.alpha) - np.log(self.beta)
+
+    def logpdf(self, x):
+        y = x/self.beta
+        with np.errstate(divide='warn', invalid='warn'):
+            return np.where(x > 0, -(self.alpha+1) * np.log(y) - 
+                            np.divide(1.0, y, out=np.zeros_like(y, dtype=np.float64), where=(y!=0.))
+                            + self._last_term, np.NINF)
+
+    def pdf(self, x):
+        return np.where(x > 0, np.exp(self.logpdf(x)), 0)
+
+    def rvs(self, size=1, random_state=None):
+        if random_state is None:
+            random_state = self.rng
+        return 1. / random_state.gamma(self.alpha, self.beta, size)
 
 
-def exp(lam=1.0):
-    return dists.expon(scale=1. / lam)
+class exp:
+    def __init__(self, lam=1.0):
+        assert np.all(lam > 0)
 
+        self.lam = lam
+        self.rng = default_rng()
+        self._log_lam = log(self.lam)
 
-def poisson(lam=1.0):
-    return dists.poisson(mu=lam)
+    def logpdf(self, x):
+        return np.where(x >= 0, self._log_lam - x*self.lam, np.NINF)
 
+    def pdf(self, x):
+        return np.where(x >= 0, np.exp(self.logpdf(x)), 0)
 
-def laplace(loc=0.0, diversity=1.0):
-    return dists.laplace(loc=loc, scale=diversity)
+    def rvs(self, size=1, random_state=None):
+        if random_state is None:
+            random_state = self.rng
+        return random_state.exponential(1./self.lam, size)
 
+class poisson:
+    def __init__(self, lam=1.0):
+        assert np.all(lam > 0)
 
-def students_t(mean=0, std=1.0, df=1.0):
-    return dists.t(df=df, loc=mean, scale=std)
+        self.lam = lam
+        self.rng = default_rng()
+        
+    def logpmf(self, x):
+        return np.where((x >= 0) & (x == np.round(x)), xlogy(x, self.lam) - gammaln(x + 1) - self.lam, np.NINF)
+        
+    def pmf(self, x):
+        return np.where((x >= 0) & (x == np.round(x)), np.exp(self.logpmf(x)), 0)
+    
+    def rvs(self, size=1, random_state=None):
+        if random_state is None:
+            random_state = self.rng
+        
+        return random_state.poisson(self.lam, size)
 
+class laplace:
+    def __init__(self, loc=0.0, diversity=1.0):
+        assert np.all(diversity > 0)
+
+        self.loc = loc
+        self.diversity = diversity
+        self.rng = default_rng()
+
+        self._log_diversity = np.log(diversity)
+
+    def logpdf(self, x):
+        y = (x - self.loc) / self.diversity
+        return _log_half - np.abs(y) - self._log_diversity
+
+    def pdf(self, x):
+        return np.exp(self.logpdf(x))
+
+    def rvs(self, size=1, random_state=None):
+        if random_state is None:
+            random_state = self.rng
+        
+        return random_state.laplace(self.loc, self.diversity, size=size)        
+
+class students_t:
+    def __init__(self, mean=0, std=1.0, df=1.0):
+        assert np.all(std > 0)
+        assert np.all(df > 0)
+
+        self.mean = mean
+        self.std = std
+        self.df = df
+        self.rng = default_rng()
+
+        self._half_df_plus_one = (self.df+1)/2
+        self._first_term = gammaln(self._half_df_plus_one) - gammaln(self.df/2) - 0.5*np.log(self.df*np.pi) - log(self.std)
+
+    def logpdf(self, x):
+        y = (x - self.mean) / self.std
+        return self._first_term - self._half_df_plus_one*np.log(1+(y**2)/self.df)
+
+    def pdf(self, x):
+        return np.exp(self.logpdf(x))
+
+    def rvs(self, size=1, random_state=None):
+        if random_state is None:
+            random_state = self.rng
+        
+        return random_state.standard_t(self.df, size)*self.std + self.mean     
 
 def noncentral_t(mean=0, std=1.0, df=1.0, nc=0.0):
     return dists.nct(df=df, nc=nc, loc=mean, scale=std)
 
 
-def halfcauchy(scale=1.0, loc=0.0):
-    return dists.halfcauchy(loc=loc, scale=scale)
+class halfcauchy:
+    def __init__(self, scale=1.0, loc=0.0):
+        assert np.all(scale > 0)
+
+        self.scale = scale
+        self.loc = loc
+        self.rng = default_rng()
+
+        self._first_term = np.log(2.0/np.pi) - np.log(self.scale)
+
+    def logpdf(self, x):
+        y = (x - self.loc) / self.scale
+        return np.where(x >= self.loc, np.log(2.0/np.pi) - log1p(y**2) - np.log(self.scale), np.NINF)
+
+    def pdf(self, x):
+        return np.where(x >= self.loc, np.exp(self.logpdf(x)), 0)
+
+    def rvs(self, size=1, random_state=None):
+        if random_state is None:
+            random_state = self.rng
+        
+        return np.abs(random_state.standard_cauchy(size))*self.scale + self.loc
 
 
 def epa_kernel(x, delta):

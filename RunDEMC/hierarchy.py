@@ -10,6 +10,7 @@
 
 import sys
 import numpy as np
+from numpy.random import default_rng
 from fastprogress.fastprogress import progress_bar
 
 from .demc import Model, HyperPrior, FixedParams
@@ -63,7 +64,7 @@ class Hierarchy(object):
 
     def __init__(self, models, num_chains=None,
                  parallel=None, use_dask=False, delay_hyper_burnin=False,
-                 separate_fixed=False):
+                 separate_fixed=False, rng=None):
         """Figures out the HyperPriors and FixedParams from list of submodels.
         """
         self._models = _flatten(models)
@@ -74,6 +75,11 @@ class Hierarchy(object):
         self._use_dask = use_dask
         self._delay_hyper_burnin = delay_hyper_burnin
         self._separate_fixed = separate_fixed
+        
+        self._rng = rng
+
+        if self._rng is None:
+            self._rng = default_rng()
 
     def save(self, filename, **kwargs):
         # loop over models adding to a dict of dicts
@@ -399,7 +405,7 @@ class Hierarchy(object):
                     jobs = []
                     for m in self._models:
                         # check if migrate
-                        if np.random.rand() < migration_prob:
+                        if self._rng.random() < migration_prob:
                             # migrate, which is deterministic and done in place
                             m._migrate()
 
