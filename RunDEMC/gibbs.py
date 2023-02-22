@@ -62,12 +62,17 @@ class NormalHyperPrior(object):
                            Acceptance rate as an array.
                            """)
 
-    def __init__(self, name, mu, sigma, alpha, beta):
+    def __init__(self, name, mu, sigma, alpha, beta, rng=None):
         self._name = name
         self._mu = mu
         self._sigma = sigma
         self._alpha = alpha
         self._beta = beta
+        
+        self._rng = rng
+
+        if self._rng is None:
+            self._rng = default_rng()
 
         self._params = [Param(name='mean',
                               prior=normal(self._mu, self._sigma)),
@@ -174,7 +179,7 @@ class NormalHyperPrior(object):
                 cur_split = np.arange(self._num_chains)
             else:
                 # pick randomly
-                cur_split = default_rng().integers(0, self._num_chains, len(vals))
+                cur_split = self._rng.integers(0, self._num_chains, len(vals))
 
         # generate the pdf using the likelihood func
         pop = _apply_param_transform(self._particles[-1][cur_split],
@@ -199,7 +204,7 @@ class NormalHyperPrior(object):
                 cur_split = np.arange(self._num_chains)
             else:
                 # pick randomly
-                cur_split = default_rng().integers(0, self._num_chains, len(vals))
+                cur_split = self._rng.integers(0, self._num_chains, len(vals))
 
         # generate the pdf using the likelihood func
         pop = _apply_param_transform(self._particles[-1][cur_split],
@@ -225,7 +230,7 @@ class NormalHyperPrior(object):
             chains = np.arange(num_chains)[cur_split]
         else:
             # pick randomly
-            chains = default_rng().integers(0, num_chains, size[0])
+            chains = self._rng.integers(0, num_chains, size[0])
 
         # generate the random vars using the likelihood func
         # pop = self._particles[-1][chains]

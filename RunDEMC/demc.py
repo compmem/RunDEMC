@@ -107,10 +107,16 @@ class Model(object):
                  pop_recarray=True,
                  pop_parallel=False,
                  n_jobs=-1, backend=None,
-                 use_dask=False):
+                 use_dask=False,
+                 rng=None):
         """
         DEMC
         """
+        self._rng = rng
+
+        if self._rng is None:
+            self._rng = default_rng()
+
         # set the vars
         self._name = name
         self._params = params  # can't be None
@@ -289,7 +295,7 @@ class Model(object):
         
         if self._rand_split:
             # randomize the indices
-            all_ind = default_rng().permutation(num_particles)
+            all_ind = self._rng.permutation(num_particles)
         else:
             all_ind = np.arange(num_particles)
 
@@ -301,7 +307,7 @@ class Model(object):
 
     def _migrate(self):
         # pick which items will migrate
-        num_to_migrate = default_rng().integers(2, self._num_chains)
+        num_to_migrate = self._rng.integers(2, self._num_chains)
         to_migrate = random.sample(
             list(range(self._num_chains)), num_to_migrate)
 
@@ -329,7 +335,7 @@ class Model(object):
             mh_prob = np.exp(log_diff)
             if np.isnan(mh_prob):
                 mh_prob = 0.0
-            keep = (mh_prob - default_rng().random()) > 0.0
+            keep = (mh_prob - self._rng.random()) > 0.0
             if keep:
                 keepers.append({'ind': j,
                                 'particle': self._particles[-1][i],
@@ -363,7 +369,7 @@ class Model(object):
         else:
             progress = range(num_iter)
         for i in progress:
-            if default_rng().random() < migration_prob:
+            if self._rng.random() < migration_prob:
                 # migrate, which is deterministic and done in place
                 # if self._verbose:
                 #     sys.stdout.write('x ')
@@ -402,7 +408,7 @@ class Model(object):
             evo_args = self._get_evo_args(burnin=burnin)
 
             # get new state
-            evo_res = _evolve(**evo_args)
+            evo_res = _evolve(self._rng, **evo_args)
 
             # save the state
             self._save_evolution(**evo_res)
@@ -744,7 +750,7 @@ def _calc_log_prior(*props, priors, cur_split=None):
     return log_priors
 
 
-def _evolve(prop_gen=None, parts_ind=None, split_ind=None,
+def _evolve(rng, prop_gen=None, parts_ind=None, split_ind=None,
             particles=None, param_names=None,
             transforms=None, priors=None, fixed=None,
             log_likes=None, weights=None, use_priors=True, recalc_likes=False,
@@ -813,7 +819,7 @@ def _evolve(prop_gen=None, parts_ind=None, split_ind=None,
             prev_weights = prev_log_likes
 
         # calc acceptance in log space
-        keep = np.log(default_rng().random(len(log_diff))) < log_diff
+        keep = np.log(rng.random(len(log_diff))) < log_diff
 
         # handle much greater than one
         #log_diff[log_diff > 0.0] = 0.0
@@ -821,7 +827,7 @@ def _evolve(prop_gen=None, parts_ind=None, split_ind=None,
         # now exp so we can get the other probs
         # mh_prob = np.exp(log_diff)
         # mh_prob[np.isnan(mh_prob)] = 0.0
-        # keep = (mh_prob - default_rng().random(len(mh_prob))) > 0.0
+        # keep = (mh_prob - rng.random(len(mh_prob))) > 0.0
 
         # modify the relevant particles
         # use mask the mask approach
@@ -892,7 +898,7 @@ class _HyperPriorSnapshot():
             chains = np.arange(self._num_chains)
         else:
             # pick randomly
-            chains = default_rng().integers(0, self._num_chains, size[0])
+            chains = self._rng.integers(0, self._num_chains, size[0])
 
         # generate the random vars using the likelihood func
         # pop = self._particles[-1][chains]
@@ -911,7 +917,8 @@ class HyperPrior(Model):
                  proposal_gen=None,
                  burnin_proposal_gen=None,
                  use_priors=True,
-                 verbose=False):
+                 verbose=False,
+                 rng=None):
 
         # handle the dist
         self._dist = dist
@@ -926,7 +933,8 @@ class HyperPrior(Model):
                                          initial_zeros_ok=True,
                                          use_priors=use_priors,
                                          verbose=verbose,
-                                         pop_recarray=False)
+                                         pop_recarray=False,
+                                         rng=rng)
 
         # We need to recalc likes of prev iteration in case of hyperprior
         self._recalc_likes = True
@@ -968,7 +976,7 @@ class HyperPrior(Model):
                 cur_split = np.arange(self._num_chains)
             else:
                 # pick randomly
-                cur_split = default_rng().integers(0, self._num_chains, len(vals))
+                cur_split = self._rng.integers(0, self._num_chains, len(vals))
 
         # generate the pdf using the likelihood func
         pop = _apply_param_transform(self._particles[-1][cur_split],
@@ -998,7 +1006,7 @@ class HyperPrior(Model):
                 cur_split = np.arange(self._num_chains)
             else:
                 # pick randomly
-                cur_split = default_rng().integers(0, self._num_chains, len(vals))
+                cur_split = self._rng.integers(0, self._num_chains, len(vals))
 
         # generate the pdf using the likelihood func
         pop = _apply_param_transform(self._particles[-1][cur_split],
@@ -1028,7 +1036,7 @@ class HyperPrior(Model):
             chains = np.arange(num_chains)[cur_split]
         else:
             # pick randomly
-            chains = default_rng().integers(0, num_chains, size[0])
+            chains = self._rng.integers(0, num_chains, size[0])
 
         # generate the random vars using the likelihood func
         # pop = self._particles[-1][chains]
